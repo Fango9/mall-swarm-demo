@@ -24,6 +24,8 @@
     <module>mall-common</module>
     <module>mall-demo</module>
     <module>mall-gateway</module>
+    <module>mall-mbg</module>
+    <module>mall-admin</module>
   </modules>
 
   <properties>
