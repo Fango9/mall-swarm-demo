@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>cn.fango.mall</groupId>
+        <artifactId>mall-swarm</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>mall-common</artifactId>
+    <packaging>jar</packaging>
+
+    <name>mall-common</name>
+    <description>微服务商城公共模块</description>
+
+    <dependencies>
+        <!-- 为公共模块提供 JUnit 5、断言工具等测试基础设施。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- CommonResult 使用 Hutool 生成 JSON 字符串。 -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.8.40</version>
+        </dependency>
+        <!-- 将 PageHelper 分页查询结果转换为统一的分页响应。 -->
+        <dependency>
+            <groupId>com.github.pagehelper</groupId>
+            <artifactId>pagehelper</artifactId>
+            <version>6.1.1</version>
+        </dependency>
+        <!-- PageHelper 运行时依赖 MyBatis 的日志与核心 API。 -->
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis</artifactId>
+            <version>3.5.19</version>
+        </dependency>
+        <!-- 为全局异常处理器提供 Spring MVC 注解。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+</project>
