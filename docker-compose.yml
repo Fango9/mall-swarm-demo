@@ -33,13 +33,17 @@ services:
       retries: 10
 
   nacos:
-    image: nacos/nacos-server:v2.4.3
+    image: nacos/nacos-server:v3.0.3
     container_name: mall-nacos
     restart: unless-stopped
     environment:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
       TZ: Asia/Shanghai
+      NACOS_AUTH_TOKEN: "VGhpc0lzTXlDdXN0b21TZWNyZXRLZXkwMTIzNDU2Nzg="
+      NACOS_AUTH_IDENTITY_KEY: "mall-swarm"
+      NACOS_AUTH_IDENTITY_VALUE: "local-dev"
+      NACOS_AUTH_ADMIN_ENABLE: "false"
     ports:
       - "8848:8848"
       - "9848:9848"
