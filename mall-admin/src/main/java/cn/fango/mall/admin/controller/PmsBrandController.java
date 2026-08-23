@@ -1,5 +1,6 @@
 package cn.fango.mall.admin.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.fango.mall.admin.dto.BrandCreateRequest;
 import cn.fango.mall.admin.dto.BrandUpdateRequest;
 import cn.fango.mall.admin.service.PmsBrandService;
@@ -15,6 +16,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/admin/brands")
+@SaCheckRole("ADMIN")
 public class PmsBrandController {
 
     private final PmsBrandService pmsBrandService;

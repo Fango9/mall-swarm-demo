@@ -45,8 +45,8 @@
         </dependency>
         <!-- 为全局异常处理器提供 Spring MVC 注解。 -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
         </dependency>
     </dependencies>
 </project>

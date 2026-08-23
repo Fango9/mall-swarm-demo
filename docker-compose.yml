@@ -32,6 +32,19 @@ services:
       timeout: 5s
       retries: 10
 
+  redis-commander:
+    image: spryker/redis-commander:0.8.0
+    container_name: mall-redis-commander
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOSTS: mall:redis:6379:0
+    ports:
+      - "127.0.0.1:8081:8081"
+    user: redis
+
   nacos:
     image: nacos/nacos-server:v3.0.3
     container_name: mall-nacos
