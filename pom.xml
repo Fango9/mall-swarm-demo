@@ -27,6 +27,7 @@
     <module>mall-mbg</module>
     <module>mall-admin</module>
     <module>mall-auth</module>
+      <module>mall-portal</module>
   </modules>
 
   <properties>

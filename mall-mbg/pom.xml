@@ -74,6 +74,34 @@
                 </plugins>
             </build>
         </profile>
+
+        <profile>
+            <id>generate-product</id>
+
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.mybatis.generator</groupId>
+                        <artifactId>mybatis-generator-maven-plugin</artifactId>
+
+                        <executions>
+                            <execution>
+                                <id>generate-product</id>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <configurationFile>
+                                        ${project.basedir}/src/main/resources/generatorProductConfig.xml
+                                    </configurationFile>
+                                    <overwrite>true</overwrite>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
 </project>
