@@ -9,6 +9,7 @@ import cn.fango.mall.auth.dto.RegisterRequest;
 import cn.fango.mall.auth.service.UmsMemberService;
 import cn.fango.mall.common.api.CommonResult;
 import cn.fango.mall.common.exception.ApiException;
+import cn.fango.mall.common.security.MemberSessionKeys;
 import cn.fango.mall.mbg.model.UmsMember;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,6 +65,7 @@ public class AuthController {
 
         UmsMember member = umsMemberService.authenticate(username, password);
         StpUtil.login(member.getId());
+        StpUtil.getSession().set(MemberSessionKeys.ROLE, member.getRole());
 
         LoginResponse response = new LoginResponse(
                 member.getId(),

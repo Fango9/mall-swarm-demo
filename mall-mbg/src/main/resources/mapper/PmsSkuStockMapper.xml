@@ -7,6 +7,7 @@
     <result column="sku_code" jdbcType="VARCHAR" property="skuCode" />
     <result column="price" jdbcType="DECIMAL" property="price" />
     <result column="stock" jdbcType="INTEGER" property="stock" />
+    <result column="lock_stock" jdbcType="INTEGER" property="lockStock" />
     <result column="pic" jdbcType="VARCHAR" property="pic" />
     <result column="sale_attrs" jdbcType="VARCHAR" property="saleAttrs" />
   </resultMap>
@@ -69,7 +70,7 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    id, product_id, sku_code, price, stock, pic, sale_attrs
+    id, product_id, sku_code, price, stock, lock_stock, pic, sale_attrs
   </sql>
   <select id="selectByExample" parameterType="cn.fango.mall.mbg.model.PmsSkuStockExample" resultMap="BaseResultMap">
     select
@@ -106,11 +107,11 @@
       SELECT LAST_INSERT_ID()
     </selectKey>
     insert into pms_sku_stock (product_id, sku_code, price, 
-      stock, pic, sale_attrs
-      )
+      stock, lock_stock, pic, 
+      sale_attrs)
     values (#{productId,jdbcType=BIGINT}, #{skuCode,jdbcType=VARCHAR}, #{price,jdbcType=DECIMAL}, 
-      #{stock,jdbcType=INTEGER}, #{pic,jdbcType=VARCHAR}, #{saleAttrs,jdbcType=VARCHAR}
-      )
+      #{stock,jdbcType=INTEGER}, #{lockStock,jdbcType=INTEGER}, #{pic,jdbcType=VARCHAR}, 
+      #{saleAttrs,jdbcType=VARCHAR})
   </insert>
   <insert id="insertSelective" parameterType="cn.fango.mall.mbg.model.PmsSkuStock">
     <selectKey keyProperty="id" order="AFTER" resultType="java.lang.Long">
@@ -129,6 +130,9 @@
       </if>
       <if test="stock != null">
         stock,
+      </if>
+      <if test="lockStock != null">
+        lock_stock,
       </if>
       <if test="pic != null">
         pic,
@@ -149,6 +153,9 @@
       </if>
       <if test="stock != null">
         #{stock,jdbcType=INTEGER},
+      </if>
+      <if test="lockStock != null">
+        #{lockStock,jdbcType=INTEGER},
       </if>
       <if test="pic != null">
         #{pic,jdbcType=VARCHAR},
@@ -182,6 +189,9 @@
       <if test="row.stock != null">
         stock = #{row.stock,jdbcType=INTEGER},
       </if>
+      <if test="row.lockStock != null">
+        lock_stock = #{row.lockStock,jdbcType=INTEGER},
+      </if>
       <if test="row.pic != null">
         pic = #{row.pic,jdbcType=VARCHAR},
       </if>
@@ -200,6 +210,7 @@
       sku_code = #{row.skuCode,jdbcType=VARCHAR},
       price = #{row.price,jdbcType=DECIMAL},
       stock = #{row.stock,jdbcType=INTEGER},
+      lock_stock = #{row.lockStock,jdbcType=INTEGER},
       pic = #{row.pic,jdbcType=VARCHAR},
       sale_attrs = #{row.saleAttrs,jdbcType=VARCHAR}
     <if test="example != null">
@@ -221,6 +232,9 @@
       <if test="stock != null">
         stock = #{stock,jdbcType=INTEGER},
       </if>
+      <if test="lockStock != null">
+        lock_stock = #{lockStock,jdbcType=INTEGER},
+      </if>
       <if test="pic != null">
         pic = #{pic,jdbcType=VARCHAR},
       </if>
@@ -236,6 +250,7 @@
       sku_code = #{skuCode,jdbcType=VARCHAR},
       price = #{price,jdbcType=DECIMAL},
       stock = #{stock,jdbcType=INTEGER},
+      lock_stock = #{lockStock,jdbcType=INTEGER},
       pic = #{pic,jdbcType=VARCHAR},
       sale_attrs = #{saleAttrs,jdbcType=VARCHAR}
     where id = #{id,jdbcType=BIGINT}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.fango.mall.admin.mapper.PmsSkuStockReservationMapper">
+
+    <update id="lockStock">
+        UPDATE pms_sku_stock
+        SET lock_stock = lock_stock + #{quantity}
+        WHERE id = #{skuId}
+          AND stock - lock_stock >= #{quantity}
+    </update>
+
+    <update id="releaseStock">
+        UPDATE pms_sku_stock
+        SET lock_stock = lock_stock - #{quantity}
+        WHERE id = #{skuId}
+          AND lock_stock >= #{quantity}
+    </update>
+
+</mapper>

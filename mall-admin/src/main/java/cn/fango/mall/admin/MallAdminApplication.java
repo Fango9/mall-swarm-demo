@@ -11,7 +11,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
         "cn.fango.mall.admin",
         "cn.fango.mall.common"
 })
-@MapperScan("cn.fango.mall.mbg.mapper")
+@MapperScan({
+        "cn.fango.mall.mbg.mapper",
+        "cn.fango.mall.admin.mapper"
+})
 public class MallAdminApplication {
 
     /**

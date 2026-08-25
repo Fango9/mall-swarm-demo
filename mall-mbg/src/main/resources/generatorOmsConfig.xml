@@ -4,7 +4,8 @@
         "https://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
 
 <generatorConfiguration>
-    <context id="mallAuthMySql" targetRuntime="MyBatis3">
+    <context id="mallOmsMySql" targetRuntime="MyBatis3">
+
         <plugin type="org.mybatis.generator.plugins.UnmergeableXmlMappersPlugin"/>
         <commentGenerator>
             <property name="suppressAllComments" value="true"/>
@@ -35,19 +36,15 @@
                 targetPackage="cn.fango.mall.mbg.mapper"
                 targetProject="src/main/java"/>
 
-        <table tableName="pms_product_category" domainObjectName="PmsProductCategory">
+        <table tableName="oms_cart_item" domainObjectName="OmsCartItem">
             <generatedKey column="id" sqlStatement="MySql" identity="true"/>
         </table>
 
-        <table tableName="pms_product" domainObjectName="PmsProduct">
+        <table tableName="oms_order" domainObjectName="OmsOrder">
             <generatedKey column="id" sqlStatement="MySql" identity="true"/>
         </table>
 
-        <table tableName="pms_sku_stock" domainObjectName="PmsSkuStock">
-            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
-        </table>
-
-        <table tableName="pms_stock_reservation" domainObjectName="PmsStockReservation">
+        <table tableName="oms_order_item" domainObjectName="OmsOrderItem">
             <generatedKey column="id" sqlStatement="MySql" identity="true"/>
         </table>
     </context>

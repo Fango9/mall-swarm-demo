@@ -1,5 +1,6 @@
 package cn.fango.mall.portal;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
@@ -7,8 +8,12 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 /**
  * 商城门户服务启动类。
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+        "cn.fango.mall.portal",
+        "cn.fango.mall.common"
+})
 @EnableFeignClients
+@MapperScan("cn.fango.mall.mbg.mapper")
 public class MallPortalApplication {
 
     /**

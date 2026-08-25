@@ -13,6 +13,8 @@ public class PmsSkuStock {
 
     private Integer stock;
 
+    private Integer lockStock;
+
     private String pic;
 
     private String saleAttrs;
@@ -55,6 +57,14 @@ public class PmsSkuStock {
 
     public void setStock(Integer stock) {
         this.stock = stock;
+    }
+
+    public Integer getLockStock() {
+        return lockStock;
+    }
+
+    public void setLockStock(Integer lockStock) {
+        this.lockStock = lockStock;
     }
 
     public String getPic() {
