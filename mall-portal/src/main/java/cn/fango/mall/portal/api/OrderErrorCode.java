@@ -32,7 +32,10 @@ public enum OrderErrorCode implements IErrorCode {
     CART_ITEM_CLEAR_FAILED(54014, "清理购物车项失败"),
 
     /** 调用后台库存释放补偿服务失败。 */
-    STOCK_RELEASE_COMPENSATION_FAILED(54015, "库存释放补偿失败");
+    STOCK_RELEASE_COMPENSATION_FAILED(54015, "库存释放补偿失败"),
+
+    /** 创建订单对应的 Outbox 事件失败。 */
+    OUTBOX_EVENT_CREATE_FAILED(54016, "创建订单事件失败");
 
     /**
      * 业务错误码。

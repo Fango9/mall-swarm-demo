@@ -32,7 +32,13 @@ public enum StockReservationErrorCode implements IErrorCode {
     STOCK_RELEASE_FAILED(53041, "库存释放失败"),
 
     /** 创建库存预占记录失败。 */
-    RESERVATION_CREATE_FAILED(53042, "创建库存预占记录失败");
+    RESERVATION_CREATE_FAILED(53042, "创建库存预占记录失败"),
+
+    /** 订单创建事件内容非法。 */
+    ORDER_CREATED_EVENT_INVALID(43104, "订单创建事件内容非法"),
+
+    /** 订单创建事件无法确认库存预占。 */
+    STOCK_RESERVATION_CONFIRM_FAILED(53043, "确认库存预占失败");
 
     private final long code;
     private final String message;

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.fango.mall.admin.mapper.PmsOrderEventConsumerMapper">
+
+    <insert id="insertIgnoreConsumeLog">
+        INSERT IGNORE INTO pms_event_consume_log
+        (
+            event_id,
+            consumer
+        )
+        VALUES
+            (
+                #{eventId,jdbcType=VARCHAR},
+                #{consumer,jdbcType=VARCHAR}
+            )
+    </insert>
+
+    <update id="confirmLockedReservations">
+        UPDATE pms_stock_reservation
+        SET status = 'CONFIRMED',
+            expire_at = NULL
+        WHERE reservation_no = #{reservationNo,jdbcType=VARCHAR}
+          AND status = 'LOCKED'
+    </update>
+
+</mapper>

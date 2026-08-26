@@ -1,20 +1,23 @@
 package cn.fango.mall.portal.service.impl;
 
+import cn.fango.mall.common.event.OrderCreatedEvent;
 import cn.fango.mall.common.exception.ApiException;
 import cn.fango.mall.mbg.mapper.OmsCartItemMapper;
 import cn.fango.mall.mbg.mapper.OmsOrderItemMapper;
 import cn.fango.mall.mbg.mapper.OmsOrderMapper;
-import cn.fango.mall.mbg.model.OmsCartItem;
-import cn.fango.mall.mbg.model.OmsCartItemExample;
-import cn.fango.mall.mbg.model.OmsOrder;
-import cn.fango.mall.mbg.model.OmsOrderItem;
+import cn.fango.mall.mbg.mapper.OmsOutboxEventMapper;
+import cn.fango.mall.mbg.model.*;
 import cn.fango.mall.portal.api.OrderErrorCode;
 import cn.fango.mall.portal.api.OrderStatus;
+import cn.fango.mall.portal.api.OutboxEventStatus;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 订单本地数据事务服务。
@@ -40,21 +43,41 @@ public class OrderLocalTransactionService {
      */
     private final OmsOrderItemMapper omsOrderItemMapper;
 
+    private static final String ORDER_AGGREGATE_TYPE = "ORDER";
+
+    private static final String ORDER_CREATED_EVENT_TYPE = "ORDER_CREATED";
+
+    /**
+     * 事务外盒事件数据访问对象。
+     */
+    private final OmsOutboxEventMapper omsOutboxEventMapper;
+
+    /**
+     * JSON 序列化对象。
+     */
+    private final ObjectMapper objectMapper;
+
     /**
      * 创建订单本地数据事务服务。
      *
      * @param omsCartItemMapper 购物车项数据访问对象
      * @param omsOrderMapper 订单主记录数据访问对象
      * @param omsOrderItemMapper 订单明细数据访问对象
+     * @param omsOutboxEventMapper 事务外盒事件数据访问对象
+     * @param objectMapper JSON 序列化对象
      */
     public OrderLocalTransactionService(
             OmsCartItemMapper omsCartItemMapper,
             OmsOrderMapper omsOrderMapper,
-            OmsOrderItemMapper omsOrderItemMapper
+            OmsOrderItemMapper omsOrderItemMapper,
+            OmsOutboxEventMapper omsOutboxEventMapper,
+            ObjectMapper objectMapper
     ) {
         this.omsCartItemMapper = omsCartItemMapper;
         this.omsOrderMapper = omsOrderMapper;
         this.omsOrderItemMapper = omsOrderItemMapper;
+        this.omsOutboxEventMapper = omsOutboxEventMapper;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -67,12 +90,7 @@ public class OrderLocalTransactionService {
      * @return 已保存的订单主记录
      */
     @Transactional
-    public OmsOrder createOrder(
-            Long memberId,
-            String idempotencyKey,
-            String orderSn,
-            List<OmsCartItem> cartItems
-    ) {
+    public OmsOrder createOrder(Long memberId, String idempotencyKey, String orderSn, List<OmsCartItem> cartItems) {
         BigDecimal totalAmount = calculateTotalAmount(cartItems);
 
         OmsOrder order = new OmsOrder();
@@ -97,9 +115,49 @@ public class OrderLocalTransactionService {
             }
         }
 
+        createOrderCreatedOutboxEvent(order);
+
         clearCartItems(memberId, cartItems);
 
         return order;
+    }
+
+    /**
+     * 为已保存订单创建待发布的订单创建事件。
+     *
+     * @param order 已保存且已有主键的订单
+     */
+    private void createOrderCreatedOutboxEvent(OmsOrder order) {
+        String eventId = UUID.randomUUID().toString();
+
+        OrderCreatedEvent orderCreatedEvent = new OrderCreatedEvent(
+                eventId,
+                order.getId(),
+                order.getOrderSn()
+        );
+
+        OmsOutboxEvent outboxEvent = new OmsOutboxEvent();
+        outboxEvent.setEventId(eventId);
+        outboxEvent.setAggregateType(ORDER_AGGREGATE_TYPE);
+        outboxEvent.setAggregateId(order.getId());
+        outboxEvent.setEventType(ORDER_CREATED_EVENT_TYPE);
+        outboxEvent.setStatus(OutboxEventStatus.PENDING.name());
+
+        try {
+            outboxEvent.setPayload(
+                    objectMapper.writeValueAsString(orderCreatedEvent)
+            );
+        } catch (JsonProcessingException exception) {
+            throw new ApiException(
+                    OrderErrorCode.OUTBOX_EVENT_CREATE_FAILED,
+                    exception
+            );
+        }
+
+        int inserted = omsOutboxEventMapper.insertSelective(outboxEvent);
+        if (inserted != 1 || outboxEvent.getId() == null) {
+            throw new ApiException(OrderErrorCode.OUTBOX_EVENT_CREATE_FAILED);
+        }
     }
 
     /**

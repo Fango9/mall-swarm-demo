@@ -3,6 +3,7 @@ package cn.fango.mall.admin;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * 后台商品管理服务启动类。
@@ -15,6 +16,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
         "cn.fango.mall.mbg.mapper",
         "cn.fango.mall.admin.mapper"
 })
+@EnableScheduling
 public class MallAdminApplication {
 
     /**

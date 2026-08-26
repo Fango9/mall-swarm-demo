@@ -13,6 +13,8 @@ public class PmsStockReservation {
 
     private String status;
 
+    private Date expireAt;
+
     private Date createTime;
 
     private Date modifyTime;
@@ -55,6 +57,14 @@ public class PmsStockReservation {
 
     public void setStatus(String status) {
         this.status = status == null ? null : status.trim();
+    }
+
+    public Date getExpireAt() {
+        return expireAt;
+    }
+
+    public void setExpireAt(Date expireAt) {
+        this.expireAt = expireAt;
     }
 
     public Date getCreateTime() {

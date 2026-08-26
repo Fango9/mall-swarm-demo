@@ -4,6 +4,7 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * 商城门户服务启动类。
@@ -13,6 +14,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
         "cn.fango.mall.common"
 })
 @EnableFeignClients
+@EnableScheduling
 @MapperScan("cn.fango.mall.mbg.mapper")
 public class MallPortalApplication {
 

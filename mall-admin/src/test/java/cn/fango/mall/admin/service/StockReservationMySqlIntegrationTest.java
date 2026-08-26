@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.math.BigDecimal;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -127,6 +128,8 @@ class StockReservationMySqlIntegrationTest {
                         List.of(new StockReservationItem(skuId, 2))
                 );
 
+        Date beforeFirstReservation = new Date();
+
         boolean firstReserved =
                 stockReservationService.reserveStock(reservationRequest);
         PmsSkuStock firstLockedSku =
@@ -147,6 +150,8 @@ class StockReservationMySqlIntegrationTest {
         assertThat(reservations).hasSize(1);
         assertThat(reservations.get(0).getStatus())
                 .isEqualTo(StockReservationStatus.LOCKED.name());
+        assertThat(reservations.get(0).getExpireAt())
+                .isAfter(beforeFirstReservation);
 
         StockReservationRequest insufficientRequest =
                 new StockReservationRequest(

@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.fango.mall.mbg.mapper.OmsOutboxEventMapper">
+
+    <resultMap id="BaseResultMap"
+               type="cn.fango.mall.mbg.model.OmsOutboxEvent">
+        <id column="id" jdbcType="BIGINT" property="id"/>
+        <result column="event_id" jdbcType="VARCHAR" property="eventId"/>
+        <result column="aggregate_type"
+                jdbcType="VARCHAR"
+                property="aggregateType"/>
+        <result column="aggregate_id"
+                jdbcType="BIGINT"
+                property="aggregateId"/>
+        <result column="event_type"
+                jdbcType="VARCHAR"
+                property="eventType"/>
+        <result column="payload"
+                jdbcType="LONGVARCHAR"
+                property="payload"/>
+        <result column="status" jdbcType="VARCHAR" property="status"/>
+        <result column="retry_count"
+                jdbcType="INTEGER"
+                property="retryCount"/>
+        <result column="next_retry_at"
+                jdbcType="TIMESTAMP"
+                property="nextRetryAt"/>
+        <result column="published_at"
+                jdbcType="TIMESTAMP"
+                property="publishedAt"/>
+        <result column="last_error"
+                jdbcType="VARCHAR"
+                property="lastError"/>
+        <result column="create_time"
+                jdbcType="TIMESTAMP"
+                property="createTime"/>
+        <result column="modify_time"
+                jdbcType="TIMESTAMP"
+                property="modifyTime"/>
+    </resultMap>
+
+    <insert id="insertSelective"
+            parameterType="cn.fango.mall.mbg.model.OmsOutboxEvent"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO oms_outbox_event
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="eventId != null">
+                event_id,
+            </if>
+            <if test="aggregateType != null">
+                aggregate_type,
+            </if>
+            <if test="aggregateId != null">
+                aggregate_id,
+            </if>
+            <if test="eventType != null">
+                event_type,
+            </if>
+            <if test="payload != null">
+                payload,
+            </if>
+            <if test="status != null">
+                status,
+            </if>
+            <if test="retryCount != null">
+                retry_count,
+            </if>
+            <if test="nextRetryAt != null">
+                next_retry_at,
+            </if>
+            <if test="publishedAt != null">
+                published_at,
+            </if>
+            <if test="lastError != null">
+                last_error,
+            </if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            <if test="eventId != null">
+                #{eventId,jdbcType=VARCHAR},
+            </if>
+            <if test="aggregateType != null">
+                #{aggregateType,jdbcType=VARCHAR},
+            </if>
+            <if test="aggregateId != null">
+                #{aggregateId,jdbcType=BIGINT},
+            </if>
+            <if test="eventType != null">
+                #{eventType,jdbcType=VARCHAR},
+            </if>
+            <if test="payload != null">
+                #{payload,jdbcType=LONGVARCHAR},
+            </if>
+            <if test="status != null">
+                #{status,jdbcType=VARCHAR},
+            </if>
+            <if test="retryCount != null">
+                #{retryCount,jdbcType=INTEGER},
+            </if>
+            <if test="nextRetryAt != null">
+                #{nextRetryAt,jdbcType=TIMESTAMP},
+            </if>
+            <if test="publishedAt != null">
+                #{publishedAt,jdbcType=TIMESTAMP},
+            </if>
+            <if test="lastError != null">
+                #{lastError,jdbcType=VARCHAR},
+            </if>
+        </trim>
+    </insert>
+
+    <select id="selectPendingForPublish"
+            resultMap="BaseResultMap">
+        SELECT
+            id,
+            event_id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            payload,
+            status,
+            retry_count,
+            next_retry_at,
+            published_at,
+            last_error,
+            create_time,
+            modify_time
+        FROM oms_outbox_event
+        WHERE status = 'PENDING'
+          AND next_retry_at &lt;= #{now,jdbcType=TIMESTAMP}
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="markPublished">
+        UPDATE oms_outbox_event
+        SET status = 'PUBLISHED',
+            published_at = #{publishedAt,jdbcType=TIMESTAMP},
+            last_error = NULL
+        WHERE event_id = #{eventId,jdbcType=VARCHAR}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="markPublishFailed">
+        UPDATE oms_outbox_event
+        SET retry_count = retry_count + 1,
+            next_retry_at = #{nextRetryAt,jdbcType=TIMESTAMP},
+            last_error = #{lastError,jdbcType=VARCHAR}
+        WHERE event_id = #{eventId,jdbcType=VARCHAR}
+          AND status = 'PENDING'
+    </update>
+
+</mapper>

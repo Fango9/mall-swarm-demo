@@ -11,21 +11,24 @@ import cn.fango.mall.common.stock.StockReservationRequest;
 import cn.fango.mall.mbg.mapper.PmsStockReservationMapper;
 import cn.fango.mall.mbg.model.PmsStockReservation;
 import cn.fango.mall.mbg.model.PmsStockReservationExample;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * SKU 库存预占服务实现。
  */
 @Service
 public class StockReservationServiceImpl implements StockReservationService {
+
+    /**
+     * 库存预占的有效分钟数。
+     */
+    private final long stockReservationExpireMinutes;
 
     /**
      * 执行条件更新的 SKU 原子库存数据访问对象。
@@ -42,11 +45,21 @@ public class StockReservationServiceImpl implements StockReservationService {
      *
      * @param pmsSkuStockReservationMapper SKU 原子库存更新数据访问对象
      * @param pmsStockReservationMapper 库存预占记录数据访问对象
+     * @param stockReservationExpireMinutes 库存预占的有效分钟数
      */
     public StockReservationServiceImpl(
             PmsSkuStockReservationMapper pmsSkuStockReservationMapper,
-            PmsStockReservationMapper pmsStockReservationMapper
+            PmsStockReservationMapper pmsStockReservationMapper,
+            @Value("${mall.stock-reservation.expire-minutes}")
+            long stockReservationExpireMinutes
     ) {
+        if (stockReservationExpireMinutes <= 0) {
+            throw new IllegalArgumentException(
+                    "mall.stock-reservation.expire-minutes 必须大于 0"
+            );
+        }
+
+        this.stockReservationExpireMinutes = stockReservationExpireMinutes;
         this.pmsSkuStockReservationMapper = pmsSkuStockReservationMapper;
         this.pmsStockReservationMapper = pmsStockReservationMapper;
     }
@@ -89,6 +102,7 @@ public class StockReservationServiceImpl implements StockReservationService {
             reservation.setSkuId(item.skuId());
             reservation.setQuantity(item.quantity());
             reservation.setStatus(StockReservationStatus.LOCKED.name());
+            reservation.setExpireAt(calculateExpireAt());
 
             int inserted = pmsStockReservationMapper.insertSelective(reservation);
             if (inserted != 1 || reservation.getId() == null) {
@@ -158,6 +172,20 @@ public class StockReservationServiceImpl implements StockReservationService {
         }
 
         return true;
+    }
+
+    /**
+     * 计算当前库存预占的过期时间。
+     *
+     * @return 当前时间加上预占有效时长后的过期时间
+     */
+    private Date calculateExpireAt() {
+        long expireAtMillis = System.currentTimeMillis()
+                + TimeUnit.MINUTES.toMillis(
+                stockReservationExpireMinutes
+        );
+
+        return new Date(expireAtMillis);
     }
 
     /**

@@ -64,8 +64,24 @@ services:
     volumes:
       - nacos-data:/home/nacos/data
 
+  rabbitmq:
+    image: rabbitmq:4.3.5-management
+    container_name: mall-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 
 volumes:
   mysql-data:
   redis-data:
   nacos-data:
+  rabbitmq-data:
