@@ -1,8 +1,10 @@
 package cn.fango.mall.admin.service.impl;
 
+import cn.fango.mall.admin.api.HotSkuStockFilterResult;
 import cn.fango.mall.admin.api.StockReservationErrorCode;
 import cn.fango.mall.admin.api.StockReservationStatus;
 import cn.fango.mall.admin.mapper.PmsSkuStockReservationMapper;
+import cn.fango.mall.admin.service.HotSkuStockFilterService;
 import cn.fango.mall.admin.service.StockReservationService;
 import cn.fango.mall.common.exception.ApiException;
 import cn.fango.mall.common.stock.StockReleaseRequest;
@@ -14,10 +16,13 @@ import cn.fango.mall.mbg.model.PmsStockReservationExample;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * SKU 库存预占服务实现。
@@ -41,18 +46,22 @@ public class StockReservationServiceImpl implements StockReservationService {
     private final PmsStockReservationMapper pmsStockReservationMapper;
 
     /**
+     * 热点 SKU Redis 快速库存过滤服务。
+     */
+    private final HotSkuStockFilterService hotSkuStockFilterService;
+
+    /**
      * 创建 SKU 库存预占服务。
      *
      * @param pmsSkuStockReservationMapper SKU 原子库存更新数据访问对象
      * @param pmsStockReservationMapper 库存预占记录数据访问对象
      * @param stockReservationExpireMinutes 库存预占的有效分钟数
+     * @param hotSkuStockFilterService 热点 SKU Redis 快速库存过滤服务
      */
-    public StockReservationServiceImpl(
-            PmsSkuStockReservationMapper pmsSkuStockReservationMapper,
-            PmsStockReservationMapper pmsStockReservationMapper,
-            @Value("${mall.stock-reservation.expire-minutes}")
-            long stockReservationExpireMinutes
-    ) {
+    public StockReservationServiceImpl(PmsSkuStockReservationMapper pmsSkuStockReservationMapper,
+                                       PmsStockReservationMapper pmsStockReservationMapper,
+                                       HotSkuStockFilterService hotSkuStockFilterService,
+                                       @Value("${mall.stock-reservation.expire-minutes}") long stockReservationExpireMinutes) {
         if (stockReservationExpireMinutes <= 0) {
             throw new IllegalArgumentException(
                     "mall.stock-reservation.expire-minutes 必须大于 0"
@@ -62,6 +71,7 @@ public class StockReservationServiceImpl implements StockReservationService {
         this.stockReservationExpireMinutes = stockReservationExpireMinutes;
         this.pmsSkuStockReservationMapper = pmsSkuStockReservationMapper;
         this.pmsStockReservationMapper = pmsStockReservationMapper;
+        this.hotSkuStockFilterService = hotSkuStockFilterService;
     }
 
     /**
@@ -88,31 +98,90 @@ public class StockReservationServiceImpl implements StockReservationService {
         List<StockReservationItem> sortedItems = new ArrayList<>(request.items());
         sortedItems.sort(Comparator.comparing(StockReservationItem::skuId));
 
-        for (StockReservationItem item : sortedItems) {
-            int locked = pmsSkuStockReservationMapper.lockStock(
-                    item.skuId(),
-                    item.quantity()
-            );
-            if (locked != 1) {
-                throw new ApiException(StockReservationErrorCode.STOCK_NOT_ENOUGH);
+        List<StockReservationItem> redisReservedItems = new ArrayList<>();
+        AtomicBoolean redisStockRestored = new AtomicBoolean(false);
+        registerRollbackRedisCompensation(redisReservedItems, redisStockRestored);
+
+        try {
+            for (StockReservationItem item : sortedItems) {
+                HotSkuStockFilterResult filterResult = hotSkuStockFilterService.tryReserve(item.skuId(), item.quantity());
+
+                if (filterResult == HotSkuStockFilterResult.STOCK_NOT_ENOUGH) {
+                    throw new ApiException(StockReservationErrorCode.STOCK_NOT_ENOUGH);
+                }
+                if (filterResult == HotSkuStockFilterResult.RESERVED) {
+                    redisReservedItems.add(item);
+                }
+
+                int locked = pmsSkuStockReservationMapper.lockStock(item.skuId(), item.quantity());
+                if (locked != 1) {
+                    throw new ApiException(StockReservationErrorCode.STOCK_NOT_ENOUGH);
+                }
+
+                PmsStockReservation reservation = new PmsStockReservation();
+                reservation.setReservationNo(request.reservationNo());
+                reservation.setSkuId(item.skuId());
+                reservation.setQuantity(item.quantity());
+                reservation.setStatus(StockReservationStatus.LOCKED.name());
+                reservation.setExpireAt(calculateExpireAt());
+
+                int inserted = pmsStockReservationMapper.insertSelective(reservation);
+                if (inserted != 1 || reservation.getId() == null) {
+                    throw new ApiException(StockReservationErrorCode.RESERVATION_CREATE_FAILED);
+                }
             }
 
-            PmsStockReservation reservation = new PmsStockReservation();
-            reservation.setReservationNo(request.reservationNo());
-            reservation.setSkuId(item.skuId());
-            reservation.setQuantity(item.quantity());
-            reservation.setStatus(StockReservationStatus.LOCKED.name());
-            reservation.setExpireAt(calculateExpireAt());
+            return true;
+        } catch (RuntimeException exception) {
+            restoreRedisReservations(redisReservedItems, redisStockRestored);
+            throw exception;
+        }
+    }
 
-            int inserted = pmsStockReservationMapper.insertSelective(reservation);
-            if (inserted != 1 || reservation.getId() == null) {
-                throw new ApiException(
-                        StockReservationErrorCode.RESERVATION_CREATE_FAILED
-                );
-            }
+    /**
+     * 注册事务回滚后的 Redis 预扣补回动作。
+     *
+     * <p>方法体正常返回后，事务提交阶段仍可能失败；此时 Spring 会回滚 MySQL，
+     * 因而必须补回此前成功预扣的 Redis 库存。</p>
+     *
+     * @param redisReservedItems 已成功 Redis 预扣的 SKU 明细
+     * @param redisStockRestored Redis 库存是否已补回的并发保护标记
+     */
+    private void registerRollbackRedisCompensation(List<StockReservationItem> redisReservedItems, AtomicBoolean redisStockRestored) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
         }
 
-        return true;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+
+            /**
+             * 在事务完成后处理最终回滚。
+             *
+             * @param status 事务完成状态
+             */
+            @Override
+            public void afterCompletion(int status) {
+                if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                    restoreRedisReservations(redisReservedItems, redisStockRestored);
+                }
+            }
+        });
+    }
+
+    /**
+     * 将当前请求已经成功 Redis 预扣的库存补回一次。
+     *
+     * @param redisReservedItems 已成功 Redis 预扣的 SKU 明细
+     * @param redisStockRestored Redis 库存是否已补回的并发保护标记
+     */
+    private void restoreRedisReservations(List<StockReservationItem> redisReservedItems, AtomicBoolean redisStockRestored) {
+        if (!redisStockRestored.compareAndSet(false, true)) {
+            return;
+        }
+
+        for (StockReservationItem item : redisReservedItems) {
+            hotSkuStockFilterService.restoreReservedStock(item.skuId(), item.quantity());
+        }
     }
 
     /**
@@ -132,6 +201,9 @@ public class StockReservationServiceImpl implements StockReservationService {
         if (reservations.isEmpty()) {
             throw new ApiException(StockReservationErrorCode.RESERVATION_NOT_FOUND);
         }
+
+        List<PmsStockReservation> releasedReservations = new ArrayList<>();
+        registerAfterCommitRedisRestore(releasedReservations);
 
         for (PmsStockReservation reservation : reservations) {
             if (StockReservationStatus.RELEASED.name()
@@ -169,9 +241,40 @@ public class StockReservationServiceImpl implements StockReservationService {
                         StockReservationErrorCode.STOCK_RELEASE_FAILED
                 );
             }
+            releasedReservations.add(reservation);
         }
 
         return true;
+    }
+
+    /**
+     * 注册 MySQL 事务提交后的 Redis 可预占库存恢复动作。
+     *
+     * <p>只有 MySQL 已真正提交锁定库存释放后，才允许增加 Redis 可预占库存；
+     * 若事务回滚，则不执行任何 Redis 写入。</p>
+     *
+     * @param releasedReservations 本次 MySQL 成功释放的库存预占记录
+     */
+    private void registerAfterCommitRedisRestore(List<PmsStockReservation> releasedReservations) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+
+            /**
+             * 在 MySQL 事务提交成功后恢复 Redis 可预占库存。
+             */
+            @Override
+            public void afterCommit() {
+                for (PmsStockReservation reservation : releasedReservations) {
+                    hotSkuStockFilterService.restoreReservedStock(
+                            reservation.getSkuId(),
+                            reservation.getQuantity()
+                    );
+                }
+            }
+        });
     }
 
     /**

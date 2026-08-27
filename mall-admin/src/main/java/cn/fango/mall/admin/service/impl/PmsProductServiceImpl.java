@@ -4,6 +4,7 @@ import cn.fango.mall.admin.api.ProductErrorCode;
 import cn.fango.mall.admin.dto.ProductCreateRequest;
 import cn.fango.mall.admin.dto.ProductUpdateRequest;
 import cn.fango.mall.admin.service.PmsProductService;
+import cn.fango.mall.admin.service.ProductOutboxEventService;
 import cn.fango.mall.common.exception.ApiException;
 import cn.fango.mall.mbg.mapper.PmsProductCategoryMapper;
 import cn.fango.mall.mbg.mapper.PmsProductMapper;
@@ -12,6 +13,7 @@ import cn.fango.mall.mbg.model.PmsProductCategory;
 import cn.fango.mall.mbg.model.PmsProductExample;
 import com.github.pagehelper.PageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -27,17 +29,21 @@ public class PmsProductServiceImpl implements PmsProductService {
     private final PmsProductCategoryMapper pmsProductCategoryMapper;
 
     /**
+     * 商品变更 Outbox 事件写入服务。
+     */
+    private final ProductOutboxEventService productOutboxEventService;
+
+    /**
      * 创建商品管理服务。
      *
      * @param pmsProductMapper 商品数据访问对象
      * @param pmsProductCategoryMapper 商品分类数据访问对象
+     * @param productOutboxEventService 商品变更 Outbox 事件写入服务
      */
-    public PmsProductServiceImpl(
-            PmsProductMapper pmsProductMapper,
-            PmsProductCategoryMapper pmsProductCategoryMapper
-    ) {
+    public PmsProductServiceImpl(PmsProductMapper pmsProductMapper, PmsProductCategoryMapper pmsProductCategoryMapper, ProductOutboxEventService productOutboxEventService) {
         this.pmsProductMapper = pmsProductMapper;
         this.pmsProductCategoryMapper = pmsProductCategoryMapper;
+        this.productOutboxEventService = productOutboxEventService;
     }
 
     /**
@@ -57,12 +63,13 @@ public class PmsProductServiceImpl implements PmsProductService {
     }
 
     /**
-     * 创建商品，并初始化删除状态和审核状态。
+     * 创建商品、初始化状态并在同一事务中写入商品变更 Outbox 事件。
      *
      * @param request 创建商品请求
      * @return 新创建商品的主键
      */
     @Override
+    @Transactional
     public Long createProduct(ProductCreateRequest request) {
         validateCreateRequest(request);
         checkProductSnExists(request.productSn(), null);
@@ -94,6 +101,8 @@ public class PmsProductServiceImpl implements PmsProductService {
             throw new ApiException(ProductErrorCode.PRODUCT_CREATE_FAILED);
         }
 
+        productOutboxEventService.recordProductChanged(product.getId());
+
         return product.getId();
     }
 
@@ -116,13 +125,14 @@ public class PmsProductServiceImpl implements PmsProductService {
     }
 
     /**
-     * 更新指定商品，不允许修改删除状态和审核状态。
+     * 更新指定商品并在同一事务中写入商品变更 Outbox 事件。
      *
      * @param id 商品主键
      * @param request 更新商品请求
      * @return 是否更新成功
      */
     @Override
+    @Transactional
     public boolean updateProduct(Long id, ProductUpdateRequest request) {
         getProduct(id);
         validateUpdateRequest(request);
@@ -147,16 +157,19 @@ public class PmsProductServiceImpl implements PmsProductService {
             throw new ApiException(ProductErrorCode.PRODUCT_UPDATE_FAILED);
         }
 
+        productOutboxEventService.recordProductChanged(id);
+
         return true;
     }
 
     /**
-     * 软删除指定商品，并同步强制下架。
+     * 软删除指定商品、强制下架并在同一事务中写入商品变更 Outbox 事件。
      *
      * @param id 商品主键
      * @return 是否删除成功
      */
     @Override
+    @Transactional
     public boolean deleteProduct(Long id) {
         getProduct(id);
 
@@ -169,6 +182,8 @@ public class PmsProductServiceImpl implements PmsProductService {
         if (count != 1) {
             throw new ApiException(ProductErrorCode.PRODUCT_DELETE_FAILED);
         }
+
+        productOutboxEventService.recordProductChanged(id);
 
         return true;
     }

@@ -4,6 +4,7 @@ import cn.fango.mall.common.api.CommonResult;
 import cn.fango.mall.common.product.ProductCategoryResponse;
 import cn.fango.mall.common.product.ProductDetailResponse;
 import cn.fango.mall.common.product.ProductSummaryResponse;
+import cn.fango.mall.portal.cache.PortalProductCacheService;
 import cn.fango.mall.portal.client.PortalProductClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,15 +21,25 @@ import java.util.List;
 @RequestMapping("/portal")
 public class PortalProductController {
 
+    /**
+     * 后台商品内部查询 Feign 客户端。
+     */
     private final PortalProductClient portalProductClient;
+
+    /**
+     * 商品浏览 Cache Aside 服务。
+     */
+    private final PortalProductCacheService portalProductCacheService;
 
     /**
      * 创建商城门户商品接口。
      *
      * @param portalProductClient 后台商品查询 Feign 客户端
+     * @param portalProductCacheService 商品 Cache Aside 服务
      */
-    public PortalProductController(PortalProductClient portalProductClient) {
+    public PortalProductController(PortalProductClient portalProductClient, PortalProductCacheService portalProductCacheService) {
         this.portalProductClient = portalProductClient;
+        this.portalProductCacheService = portalProductCacheService;
     }
 
     /**
@@ -38,7 +49,7 @@ public class PortalProductController {
      */
     @GetMapping("/categories")
     public CommonResult<List<ProductCategoryResponse>> listVisibleCategories() {
-        return portalProductClient.listVisibleCategories();
+        return portalProductCacheService.listVisibleCategories();
     }
 
     /**
@@ -51,7 +62,7 @@ public class PortalProductController {
     public CommonResult<List<ProductSummaryResponse>> listPublishedProducts(
             @RequestParam(required = false) Long categoryId
     ) {
-        return portalProductClient.listPublishedProducts(categoryId);
+        return portalProductCacheService.listPublishedProducts(categoryId);
     }
 
     /**
@@ -64,6 +75,6 @@ public class PortalProductController {
     public CommonResult<ProductDetailResponse> getPublishedProductDetail(
             @PathVariable Long productId
     ) {
-        return portalProductClient.getPublishedProductDetail(productId);
+        return portalProductCacheService.getPublishedProductDetail(productId);
     }
 }

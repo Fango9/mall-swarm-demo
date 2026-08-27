@@ -126,6 +126,34 @@
                 </plugins>
             </build>
         </profile>
+        <profile>
+            <id>generate-product-outbox</id>
+
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.mybatis.generator</groupId>
+                        <artifactId>mybatis-generator-maven-plugin</artifactId>
+
+                        <executions>
+                            <execution>
+                                <id>generate-product-outbox</id>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>generate</goal>
+                                </goals>
+                                <configuration>
+                                    <configurationFile>
+                                        ${project.basedir}/src/main/resources/generatorProductOutboxConfig.xml
+                                    </configurationFile>
+                                    <overwrite>true</overwrite>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
 </project>

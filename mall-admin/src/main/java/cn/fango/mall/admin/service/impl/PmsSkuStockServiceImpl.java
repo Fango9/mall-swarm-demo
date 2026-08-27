@@ -5,6 +5,7 @@ import cn.fango.mall.admin.api.SkuStockErrorCode;
 import cn.fango.mall.admin.dto.SkuStockCreateRequest;
 import cn.fango.mall.admin.dto.SkuStockUpdateRequest;
 import cn.fango.mall.admin.service.PmsSkuStockService;
+import cn.fango.mall.admin.service.ProductOutboxEventService;
 import cn.fango.mall.common.exception.ApiException;
 import cn.fango.mall.mbg.mapper.PmsProductMapper;
 import cn.fango.mall.mbg.mapper.PmsSkuStockMapper;
@@ -26,19 +27,22 @@ public class PmsSkuStockServiceImpl implements PmsSkuStockService {
 
     private final PmsProductMapper pmsProductMapper;
     private final PmsSkuStockMapper pmsSkuStockMapper;
+    /**
+     * 商品变更 Outbox 事件写入服务。
+     */
+    private final ProductOutboxEventService productOutboxEventService;
 
     /**
      * 创建商品 SKU 管理服务。
      *
      * @param pmsProductMapper 商品数据访问对象
      * @param pmsSkuStockMapper SKU 数据访问对象
+     * @param productOutboxEventService 商品变更 Outbox 事件写入服务
      */
-    public PmsSkuStockServiceImpl(
-            PmsProductMapper pmsProductMapper,
-            PmsSkuStockMapper pmsSkuStockMapper
-    ) {
+    public PmsSkuStockServiceImpl(PmsProductMapper pmsProductMapper, PmsSkuStockMapper pmsSkuStockMapper, ProductOutboxEventService productOutboxEventService) {
         this.pmsProductMapper = pmsProductMapper;
         this.pmsSkuStockMapper = pmsSkuStockMapper;
+        this.productOutboxEventService = productOutboxEventService;
     }
 
     /**
@@ -78,7 +82,7 @@ public class PmsSkuStockServiceImpl implements PmsSkuStockService {
     }
 
     /**
-     * 为指定商品创建 SKU，并刷新商品汇总价格与库存。
+     * 为指定商品创建 SKU、刷新商品汇总价格与库存，并在同一事务中写入商品变更 Outbox 事件。
      *
      * @param productId 商品主键
      * @param request 创建 SKU 请求
@@ -108,11 +112,12 @@ public class PmsSkuStockServiceImpl implements PmsSkuStockService {
         }
 
         refreshProductPriceAndStock(productId);
+        productOutboxEventService.recordProductChanged(productId);
         return skuStock.getId();
     }
 
     /**
-     * 更新指定商品下的指定 SKU，并刷新商品汇总价格与库存。
+     * 更新指定商品下的指定 SKU、刷新商品汇总价格与库存，并在同一事务中写入商品变更 Outbox 事件。
      *
      * @param productId 商品主键
      * @param skuId SKU 主键
@@ -140,11 +145,12 @@ public class PmsSkuStockServiceImpl implements PmsSkuStockService {
         }
 
         refreshProductPriceAndStock(productId);
+        productOutboxEventService.recordProductChanged(productId);
         return true;
     }
 
     /**
-     * 删除指定商品下的指定 SKU，并刷新商品汇总价格与库存。
+     * 删除指定商品下的指定 SKU、刷新商品汇总价格与库存，并在同一事务中写入商品变更 Outbox 事件。
      *
      * @param productId 商品主键
      * @param skuId SKU 主键
@@ -161,6 +167,7 @@ public class PmsSkuStockServiceImpl implements PmsSkuStockService {
         }
 
         refreshProductPriceAndStock(productId);
+        productOutboxEventService.recordProductChanged(productId);
         return true;
     }
 

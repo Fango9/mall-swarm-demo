@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.fango.mall.admin.mapper.PmsProductOutboxMapper">
+
+    <!-- 将数据库下划线列显式映射到 MBG 实体的驼峰属性。 -->
+    <resultMap id="PmsOutboxEventResultMap" type="cn.fango.mall.mbg.model.PmsOutboxEvent">
+        <id column="id" property="id"/>
+        <result column="event_id" property="eventId"/>
+        <result column="aggregate_type" property="aggregateType"/>
+        <result column="aggregate_id" property="aggregateId"/>
+        <result column="event_type" property="eventType"/>
+        <result column="payload" property="payload"/>
+        <result column="status" property="status"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="next_retry_at" property="nextRetryAt"/>
+        <result column="published_at" property="publishedAt"/>
+        <result column="last_error" property="lastError"/>
+        <result column="create_time" property="createTime"/>
+        <result column="modify_time" property="modifyTime"/>
+    </resultMap>
+
+    <select id="selectPendingForPublish" resultMap="PmsOutboxEventResultMap">
+        SELECT id,
+               event_id,
+               aggregate_type,
+               aggregate_id,
+               event_type,
+               payload,
+               status,
+               retry_count,
+               next_retry_at,
+               published_at,
+               last_error,
+               create_time,
+               modify_time
+        FROM pms_outbox_event
+        WHERE status = 'PENDING'
+          AND next_retry_at <![CDATA[ <= ]]> #{now,jdbcType=TIMESTAMP}
+        ORDER BY id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="markPublished">
+        UPDATE pms_outbox_event
+        SET status = 'PUBLISHED',
+            published_at = #{publishedAt,jdbcType=TIMESTAMP},
+            last_error = NULL
+        WHERE event_id = #{eventId,jdbcType=VARCHAR}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="markPublishFailed">
+        UPDATE pms_outbox_event
+        SET retry_count = retry_count + 1,
+            next_retry_at = #{nextRetryAt,jdbcType=TIMESTAMP},
+            last_error = #{lastError,jdbcType=VARCHAR}
+        WHERE event_id = #{eventId,jdbcType=VARCHAR}
+          AND status = 'PENDING'
+    </update>
+
+</mapper>
