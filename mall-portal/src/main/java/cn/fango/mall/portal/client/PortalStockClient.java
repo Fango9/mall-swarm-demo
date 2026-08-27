@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 @FeignClient(
         name = "mall-admin",
         contextId = "portalStockClient",
-        configuration = PortalAdminFeignConfig.class
+        configuration = PortalInternalFeignConfig.class
 )
 public interface PortalStockClient {
 

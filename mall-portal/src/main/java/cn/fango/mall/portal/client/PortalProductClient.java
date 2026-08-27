@@ -17,7 +17,7 @@ import java.util.List;
 @FeignClient(
         name = "mall-admin",
         contextId = "portalProductClient",
-        configuration = PortalAdminFeignConfig.class
+        configuration = PortalInternalFeignConfig.class
 )
 public interface PortalProductClient {
 
