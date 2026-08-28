@@ -10,44 +10,48 @@
         <groupId>cn.fango.mall</groupId>
         <artifactId>mall-swarm</artifactId>
         <version>1.0.0</version>
-        <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>mall-demo</artifactId>
-    <name>mall-demo</name>
+    <artifactId>mall-monitor</artifactId>
+    <name>mall-monitor</name>
+    <description>mall-swarm 监控中心</description>
 
     <dependencies>
+        <!-- Spring Boot Admin 服务端与监控页面 -->
+        <dependency>
+            <groupId>de.codecentric</groupId>
+            <artifactId>spring-boot-admin-starter-server</artifactId>
+            <version>${spring-boot-admin.version}</version>
+        </dependency>
+
+        <!-- 提供 Servlet Web 运行环境 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- 提供健康检查、应用信息与运行指标端点 -->
+        <!-- mall-monitor 自身的健康与基础运行指标 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- 仅用于保护 /actuator/**；不会替代后续业务服务的 Sa-Token 鉴权 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
-
+        <!-- 通过 Nacos 注册自身，并在后续自动发现其他服务 -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
 
+        <!-- 后续从 Nacos 加载 mall-monitor 配置 -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
 
+        <!-- 保护 Spring Boot Admin 页面与 mall-monitor 自身管理端点 -->
         <dependency>
-            <groupId>cn.fango.mall</groupId>
-            <artifactId>mall-common</artifactId>
-            <version>${project.version}</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
         <dependency>
@@ -56,5 +60,4 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
 </project>

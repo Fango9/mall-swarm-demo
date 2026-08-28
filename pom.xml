@@ -29,6 +29,7 @@
     <module>mall-auth</module>
       <module>mall-portal</module>
       <module>mall-search</module>
+      <module>mall-monitor</module>
   </modules>
 
   <properties>
@@ -37,6 +38,7 @@
     <spring-cloud.version>2025.0.0</spring-cloud.version>
     <spring-cloud-alibaba.version>2025.0.0.0</spring-cloud-alibaba.version>
     <sa-token.version>1.45.0</sa-token.version>
+    <spring-boot-admin.version>3.5.10</spring-boot-admin.version>
   </properties>
 
   <dependencyManagement>

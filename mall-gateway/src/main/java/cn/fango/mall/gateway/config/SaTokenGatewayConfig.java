@@ -21,6 +21,11 @@ public class SaTokenGatewayConfig {
     private static final String MEMBER_ROLE = "MEMBER";
 
     /**
+     * 允许访问监控中心的管理员角色。
+     */
+    private static final String ADMIN_ROLE = "ADMIN";
+
+    /**
      * 创建 Gateway 鉴权过滤器。
      *
      * <p>后台接口只校验已登录状态，具体 ADMIN 权限仍由 mall-admin 校验。
@@ -47,6 +52,16 @@ public class SaTokenGatewayConfig {
                             "/portal/orders/**",
                             route -> checkMemberRole()
                     );
+
+                    SaRouter.match(
+                            "/monitor",
+                            route -> checkAdminRole()
+                    );
+
+                    SaRouter.match(
+                            "/monitor/**",
+                            route -> checkAdminRole()
+                    );
                 })
                 .setError(throwable -> {
                     if (throwable instanceof NotRoleException) {
@@ -66,6 +81,18 @@ public class SaTokenGatewayConfig {
         Object role = StpUtil.getSession().get(MemberSessionKeys.ROLE);
         if (!MEMBER_ROLE.equals(role)) {
             throw new NotRoleException(MEMBER_ROLE, StpUtil.getLoginType());
+        }
+    }
+
+    /**
+     * 校验当前请求已经登录，且登录会话中保存的角色为 ADMIN。
+     */
+    private void checkAdminRole() {
+        StpUtil.checkLogin();
+
+        Object role = StpUtil.getSession().get(MemberSessionKeys.ROLE);
+        if (!ADMIN_ROLE.equals(role)) {
+            throw new NotRoleException(ADMIN_ROLE, StpUtil.getLoginType());
         }
     }
 }

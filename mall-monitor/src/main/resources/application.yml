@@ -1,6 +1,6 @@
 spring:
   application:
-    name: mall-demo
+    name: mall-monitor
   profiles:
     active: dev
   config:
