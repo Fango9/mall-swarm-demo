@@ -1,0 +1,24 @@
+server:
+  port: 8201
+
+spring:
+  security:
+    user:
+      name: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
+      roles: ACTUATOR
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-demo 演示服务
+    version: 1.0.0

@@ -1,0 +1,36 @@
+server:
+  port: 8205
+
+spring:
+  security:
+    user:
+      name: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
+      roles: ACTUATOR
+  elasticsearch:
+    uris: "${ELASTICSEARCH_URIS:http://elasticsearch:9200}"
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: "${RABBITMQ_VIRTUAL_HOST:/}"
+
+mall:
+  internal:
+    token: ${MALL_INTERNAL_TOKEN}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-search 商品搜索服务
+    version: 1.0.0

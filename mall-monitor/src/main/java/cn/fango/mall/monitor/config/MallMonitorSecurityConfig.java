@@ -51,6 +51,7 @@ public class MallMonitorSecurityConfig {
         http.authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(this.adminServerProperties.path("/assets/**")).permitAll()
                         .requestMatchers(this.adminServerProperties.path("/login")).permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .formLogin(formLogin -> formLogin
                         .loginPage(this.adminServerProperties.path("/login"))

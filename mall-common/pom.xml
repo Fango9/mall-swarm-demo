@@ -15,6 +15,10 @@
     <artifactId>mall-common</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+        <spring-boot.repackage.skip>true</spring-boot.repackage.skip>
+    </properties>
+
     <name>mall-common</name>
     <description>微服务商城公共模块</description>
 

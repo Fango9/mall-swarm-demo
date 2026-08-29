@@ -1,0 +1,52 @@
+server:
+  port: 8203
+
+spring:
+  security:
+    user:
+      name: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
+      roles: ACTUATOR
+  datasource:
+    url: "jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:mall}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    table: flyway_schema_history_auth
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration,classpath:db/dev-migration
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  is-read-header: true
+  is-read-body: false
+  is-read-cookie: false
+  timeout: 2592000
+  is-concurrent: true
+  is-share: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-auth 认证服务
+    version: 1.0.0

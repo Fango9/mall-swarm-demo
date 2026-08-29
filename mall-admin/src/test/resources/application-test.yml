@@ -1,0 +1,37 @@
+spring:
+  config:
+    import: optional:file:../.env[.properties]
+  datasource:
+    url: "jdbc:mysql://${MALL_TEST_MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:mall}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${MALL_TEST_REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+  rabbitmq:
+    host: ${MALL_TEST_RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: "${RABBITMQ_VIRTUAL_HOST:/}"
+
+mall:
+  stock-reservation:
+    expire-minutes: 15
+    expire-release-fixed-delay-ms: 5000
+    expire-release-batch-size: 100
+  internal:
+    token: ${MALL_INTERNAL_TOKEN}
+  outbox:
+    publish-fixed-delay-ms: 5000
+    publish-batch-size: 50
+    retry-delay-ms: 10000
+  hot-sku-stock:
+    enabled: true
+    sku-ids:
+      - 1
+    refresh-fixed-delay-ms: 30000

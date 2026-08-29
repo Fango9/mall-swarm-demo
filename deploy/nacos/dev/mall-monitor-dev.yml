@@ -1,0 +1,28 @@
+server:
+  port: 8206
+
+spring:
+  security:
+    user:
+      name: ${MONITOR_USERNAME}
+      password: ${MONITOR_PASSWORD}
+  boot:
+    admin:
+      context-path: /monitor
+      ui:
+        title: mall-swarm 监控中心
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-swarm 监控中心
+    version: 1.0.0

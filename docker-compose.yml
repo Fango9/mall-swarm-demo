@@ -4,15 +4,15 @@ services:
     container_name: mall-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: mall
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE must be set}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -21,7 +21,12 @@ services:
     image: redis:6.2
     container_name: mall-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     ports:
       - "6379:6379"
     volumes:
@@ -40,7 +45,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      REDIS_HOSTS: mall:redis:6379:0
+      REDIS_HOSTS: mall:redis:6379:0:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     ports:
       - "127.0.0.1:8081:8081"
     user: redis
@@ -53,10 +58,11 @@ services:
       MODE: standalone
       NACOS_AUTH_ENABLE: "false"
       TZ: Asia/Shanghai
-      NACOS_AUTH_TOKEN: "VGhpc0lzTXlDdXN0b21TZWNyZXRLZXkwMTIzNDU2Nzg="
-      NACOS_AUTH_IDENTITY_KEY: "mall-swarm"
-      NACOS_AUTH_IDENTITY_VALUE: "local-dev"
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?NACOS_AUTH_TOKEN must be set}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:?NACOS_AUTH_IDENTITY_KEY must be set}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?NACOS_AUTH_IDENTITY_VALUE must be set}
       NACOS_AUTH_ADMIN_ENABLE: "false"
+
     ports:
       - "8080:8080"
       - "8848:8848"
@@ -68,6 +74,10 @@ services:
     image: rabbitmq:4.3.5-management
     container_name: mall-rabbitmq
     restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME must be set}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VIRTUAL_HOST:?RABBITMQ_VIRTUAL_HOST must be set}
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -105,3 +115,7 @@ volumes:
   nacos-data:
   rabbitmq-data:
   elasticsearch-data:
+
+networks:
+  default:
+    name: mall-swarm-network

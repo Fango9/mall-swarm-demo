@@ -1,0 +1,70 @@
+server:
+  port: 8204
+
+spring:
+  security:
+    user:
+      name: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
+      roles: ACTUATOR
+  datasource:
+    url: "jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:mall}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_portal
+    validate-on-migrate: true
+    baseline-on-migrate: true
+    baseline-version: 0
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: "${RABBITMQ_VIRTUAL_HOST:/}"
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  is-read-header: true
+  is-read-body: false
+  is-read-cookie: false
+  timeout: 2592000
+  is-concurrent: true
+  is-share: true
+
+mall:
+  outbox:
+    publish-fixed-delay-ms: 5000
+    publish-batch-size: 50
+    retry-delay-ms: 10000
+  internal:
+    token: ${MALL_INTERNAL_TOKEN}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-portal 商城门户服务
+    version: 1.0.0

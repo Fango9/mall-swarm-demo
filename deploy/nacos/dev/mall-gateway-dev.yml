@@ -1,0 +1,97 @@
+server:
+  port: 8200
+
+spring:
+  security:
+    user:
+      name: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
+      roles: ACTUATOR
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+  cloud:
+    gateway:
+      routes:
+        - id: mall-demo
+          uri: lb://mall-demo
+          predicates:
+            - Path=/demo/**
+          filters:
+            - StripPrefix=1
+
+        - id: mall-auth
+          uri: lb://mall-auth
+          predicates:
+            - Path=/auth/**
+
+        - id: mall-admin
+          uri: lb://mall-admin
+          predicates:
+            - Path=/admin/**
+
+        # 购物车和下单按登录会员 ID 共享 Redis 令牌桶。
+        - id: mall-portal-member-write
+          uri: lb://mall-portal
+          predicates:
+            - Path=/portal/cart/**,/portal/orders/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@memberRateLimitKeyResolver}"
+
+        # 公共商品浏览按客户端 IP 使用独立的 Redis 令牌桶。
+        - id: mall-portal-public-browse
+          uri: lb://mall-portal
+          predicates:
+            - Path=/portal/categories,/portal/products,/portal/products/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@clientIpRateLimitKeyResolver}"
+
+        - id: mall-portal-search
+          uri: lb://mall-portal
+          predicates:
+            - Path=/search/**
+          filters:
+            - RewritePath=/search/?(?<segment>.*), /portal/search/$\{segment}
+
+        - id: mall-monitor
+          uri: lb://mall-monitor
+          predicates:
+            - Path=/monitor,/monitor/**
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  is-read-header: true
+  is-read-body: false
+  is-read-cookie: true
+  timeout: 2592000
+  is-concurrent: true
+  is-share: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-gateway 网关服务
+    version: 1.0.0

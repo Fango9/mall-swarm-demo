@@ -1,0 +1,10 @@
+.git
+.idea
+.env
+.env.*
+deploy/
+docs/
+
+**/src/
+**/target/*
+!**/target/*-1.0.0.jar

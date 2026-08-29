@@ -38,3 +38,11 @@ build/
 ### Mac OS ###
 .DS_Store
 /.idea/
+
+### Deployment local secrets ###
+.env
+.env.*
+!.env.example
+
+### Deployment generated backups ###
+/backups/

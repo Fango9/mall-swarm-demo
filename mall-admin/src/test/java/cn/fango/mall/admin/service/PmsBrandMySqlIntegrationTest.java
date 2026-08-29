@@ -20,7 +20,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
-        properties = "spring.cloud.nacos.discovery.enabled=false"
+        properties = {
+                "spring.profiles.active=test",
+                "spring.cloud.nacos.discovery.enabled=false",
+                "spring.cloud.nacos.config.enabled=false",
+                "spring.cloud.service-registry.auto-registration.enabled=false"
+        }
 )
 class PmsBrandMySqlIntegrationTest {
 
