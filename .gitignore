@@ -46,3 +46,6 @@ build/
 
 ### Deployment generated backups ###
 /backups/
+
+# 本机生成的性能压测原始结果；仅提交 docs/performance/results/ 下的 Markdown 摘要。
+docs/performance/results/*/

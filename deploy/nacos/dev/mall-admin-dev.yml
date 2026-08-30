@@ -59,6 +59,7 @@ mall:
     enabled: true
     sku-ids:
       - 1
+      - 30
     refresh-fixed-delay-ms: 30000
 
 management:
