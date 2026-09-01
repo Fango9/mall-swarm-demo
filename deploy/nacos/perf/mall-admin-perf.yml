@@ -1,0 +1,92 @@
+server:
+  port: 8202
+
+spring:
+  security:
+    user:
+      name: ${ACTUATOR_USERNAME}
+      password: ${ACTUATOR_PASSWORD}
+      roles: ACTUATOR
+  datasource:
+    url: "jdbc:mysql://${MYSQL_HOST:mysql}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:mall}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: "${RABBITMQ_VIRTUAL_HOST:/}"
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  is-read-header: true
+  is-read-body: false
+  is-read-cookie: false
+  timeout: 2592000
+  is-concurrent: true
+  is-share: true
+
+mall:
+  stock-reservation:
+    expire-minutes: 15
+    expire-release-fixed-delay-ms: 5000
+    expire-release-batch-size: 100
+  internal:
+    token: ${MALL_INTERNAL_TOKEN}
+  outbox:
+    publish-fixed-delay-ms: 5000
+    publish-batch-size: 50
+    retry-delay-ms: 10000
+    # 仅 SKU 1 启用 Redis 可预占库存快速过滤。
+  hot-sku-stock:
+    enabled: true
+    sku-ids:
+      - 1
+      - 30
+      # PERF14 P5 专用热点下单 SKU。
+      - 34
+      # PERF14 P5B 多件混合下单专用热点 SKU。
+      - 35
+      # PERF14 P5D 重复性验证专用热点 SKU。
+      - 36
+      # PERF14 P5E 强度提升专用热点 SKU。
+      - 37
+      # PERF14 P5F 上限探测专用热点 SKU。
+      - 38
+      # PERF14 P5G 延迟阈值探测专用热点 SKU。
+      - 39
+      # PERF14 P5H 千 RPS 探测专用热点 SKU。
+      - 40
+    refresh-fixed-delay-ms: 30000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,threaddump
+  endpoint:
+    health:
+      show-details: when_authorized
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: mall-admin 后台管理服务
+    version: 1.0.0

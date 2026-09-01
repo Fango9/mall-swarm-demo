@@ -29,6 +29,8 @@ CONFIGS=(
   "mall-search-dev.yml"
   "mall-monitor-dev.yml"
   "mall-demo-dev.yml"
+  "mall-gateway-perf.yml"
+  "mall-admin-perf.yml"
 )
 
 login_response="$(

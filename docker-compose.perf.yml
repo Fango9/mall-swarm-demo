@@ -1,0 +1,66 @@
+services:
+  mysql:
+    cpus: 2.0
+    mem_limit: 1280m
+
+  redis:
+    cpus: 0.5
+    mem_limit: 384m
+
+  redis-commander:
+    cpus: 0.25
+    mem_limit: 128m
+
+  nacos:
+    cpus: 0.5
+    mem_limit: 768m
+    environment:
+      # 为堆外内存、线程栈和系统缓存保留空间。
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      JVM_XMN: 128m
+
+  rabbitmq:
+    cpus: 0.75
+    mem_limit: 512m
+
+  elasticsearch:
+    cpus: 1.5
+    # 512MiB JVM 堆之外还需要 Metaspace、Direct Memory 和本地内存余量。
+    mem_limit: 1536m
+
+  mall-nginx:
+    cpus: 0.25
+    mem_limit: 128m
+
+  mall-gateway:
+    cpus: 1.0
+    mem_limit: 512m
+    environment:
+      SPRING_PROFILES_ACTIVE: perf
+
+  mall-auth:
+    cpus: 0.5
+    mem_limit: 512m
+
+  mall-demo:
+    cpus: 0.5
+    mem_limit: 384m
+
+  mall-monitor:
+    cpus: 0.5
+    mem_limit: 384m
+
+  mall-search:
+    cpus: 1.0
+    mem_limit: 768m
+
+  mall-admin:
+    cpus: 1.0
+    mem_limit: 768m
+    environment:
+      SPRING_PROFILES_ACTIVE: perf
+
+  mall-portal:
+    cpus: 1.5
+    mem_limit: 768m
