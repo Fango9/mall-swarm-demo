@@ -35,7 +35,13 @@ public enum OrderErrorCode implements IErrorCode {
     STOCK_RELEASE_COMPENSATION_FAILED(54015, "库存释放补偿失败"),
 
     /** 创建订单对应的 Outbox 事件失败。 */
-    OUTBOX_EVENT_CREATE_FAILED(54016, "创建订单事件失败");
+    OUTBOX_EVENT_CREATE_FAILED(54016, "创建订单事件失败"),
+
+    /** 热点库存确认事件无法安全推进订单状态。 */
+    HOT_STOCK_ORDER_CONFIRM_FAILED(54017, "热点订单库存确认失败"),
+
+    /** 热点库存预占用失败事件无法安全推进订单状态。 */
+    HOT_STOCK_ORDER_FAILURE_PROCESS_FAILED(54018, "热点订单库存失败处理失败");
 
     /**
      * 业务错误码。

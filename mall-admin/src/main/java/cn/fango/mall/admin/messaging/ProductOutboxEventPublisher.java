@@ -1,8 +1,15 @@
 package cn.fango.mall.admin.messaging;
 
+import cn.fango.mall.admin.api.HotStockReservationStatus;
+import cn.fango.mall.admin.cache.HotSkuStockCacheKeys;
 import cn.fango.mall.admin.mapper.PmsProductOutboxMapper;
+import cn.fango.mall.common.event.HotStockOrderConfirmedEvent;
+import cn.fango.mall.common.event.HotStockOrderFailedEvent;
+import cn.fango.mall.common.messaging.HotStockOrderMessageConstants;
 import cn.fango.mall.common.messaging.ProductCacheMessageConstants;
 import cn.fango.mall.mbg.model.PmsOutboxEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
@@ -10,6 +17,7 @@ import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -32,6 +40,13 @@ public class ProductOutboxEventPublisher {
      */
     private static final String PRODUCT_CHANGED_EVENT_TYPE = "PRODUCT_CHANGED";
 
+    private static final String HOT_STOCK_ORDER_CONFIRMED_EVENT_TYPE = "HOT_STOCK_ORDER_CONFIRMED";
+
+    /**
+     * 热点库存预占用失败后，通知 Portal 将订单改为库存失败的 Outbox 事件类型。
+     */
+    private static final String HOT_STOCK_ORDER_FAILED_EVENT_TYPE = "HOT_STOCK_ORDER_FAILED";
+
     /**
      * 商品 Outbox 发布状态数据访问对象。
      */
@@ -41,6 +56,16 @@ public class ProductOutboxEventPublisher {
      * RabbitMQ 消息模板。
      */
     private final RabbitTemplate rabbitTemplate;
+
+    /**
+     * JSON 序列化与反序列化工具。
+     */
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Redis 字符串操作模板。
+     */
+    private final StringRedisTemplate stringRedisTemplate;
 
     /**
      * 单次扫描最大的发布事件数量。
@@ -60,13 +85,23 @@ public class ProductOutboxEventPublisher {
      * @param publishBatchSize 单次扫描最大的发布事件数量
      * @param retryDelayMillis 发布失败后的重试等待毫秒数
      */
-    public ProductOutboxEventPublisher(PmsProductOutboxMapper pmsProductOutboxMapper, RabbitTemplate rabbitTemplate, @Value("${mall.outbox.publish-batch-size}") int publishBatchSize, @Value("${mall.outbox.retry-delay-ms}") long retryDelayMillis) {
-        if (publishBatchSize <= 0 || retryDelayMillis <= 0) {
+    public ProductOutboxEventPublisher(
+            PmsProductOutboxMapper pmsProductOutboxMapper,
+            RabbitTemplate rabbitTemplate,
+            ObjectMapper objectMapper,
+            StringRedisTemplate stringRedisTemplate,
+            @Value("${mall.outbox.publish-batch-size}")
+            int publishBatchSize,
+            @Value("${mall.outbox.retry-delay-ms}")
+            long retryDelayMillis
+    ) {        if (publishBatchSize <= 0 || retryDelayMillis <= 0) {
             throw new IllegalArgumentException("mall.outbox 发布参数必须大于 0");
         }
 
         this.pmsProductOutboxMapper = pmsProductOutboxMapper;
         this.rabbitTemplate = rabbitTemplate;
+        this.objectMapper = objectMapper;
+        this.stringRedisTemplate = stringRedisTemplate;
         this.publishBatchSize = publishBatchSize;
         this.retryDelayMillis = retryDelayMillis;
 
@@ -79,8 +114,7 @@ public class ProductOutboxEventPublisher {
      */
     @Scheduled(fixedDelayString = "${mall.outbox.publish-fixed-delay-ms}")
     public void publishPendingEvents() {
-        List<PmsOutboxEvent> events =
-                pmsProductOutboxMapper.selectPendingForPublish(
+        List<PmsOutboxEvent> events = pmsProductOutboxMapper.selectPendingForPublish(
                         new Date(),
                         publishBatchSize
                 );
@@ -96,8 +130,13 @@ public class ProductOutboxEventPublisher {
      * @param event 待发布的商品 Outbox 事件
      */
     private void publishEvent(PmsOutboxEvent event) {
-        if (!isProductChangedEvent(event)) {
+        if (!isSupportedEvent(event)) {
             markPublishFailed(event == null ? null : event.getEventId(), "不支持的 Outbox 事件类型");
+            return;
+        }
+
+        // 仅针对热点 sku 的成功或失败事件
+        if (!isReadyToPublish(event)) {
             return;
         }
 
@@ -105,8 +144,8 @@ public class ProductOutboxEventPublisher {
             Message message = createMessage(event);
 
             rabbitTemplate.send(
-                    ProductCacheMessageConstants.PRODUCT_CACHE_EXCHANGE,
-                    ProductCacheMessageConstants.PRODUCT_CHANGED_ROUTING_KEY,
+                    resolveExchange(event),
+                    resolveRoutingKey(event),
                     message,
                     new CorrelationData(event.getEventId())
             );
@@ -195,16 +234,58 @@ public class ProductOutboxEventPublisher {
     }
 
     /**
-     * 判断事件是否为当前发布器可发送的商品变更事件。
+     * 判断事件是否为当前发布器支持的类型。
      *
-     * @param event 待判断的商品 Outbox 事件
-     * @return 是商品变更事件时返回 {@code true}
+     * @param event 待判断的 Admin Outbox 事件
+     * @return 支持发布时返回 {@code true}
      */
-    private boolean isProductChangedEvent(PmsOutboxEvent event) {
+    private boolean isSupportedEvent(PmsOutboxEvent event) {
         return event != null
                 && StringUtils.hasText(event.getEventId())
                 && StringUtils.hasText(event.getPayload())
-                && PRODUCT_CHANGED_EVENT_TYPE.equals(event.getEventType());
+                && (PRODUCT_CHANGED_EVENT_TYPE.equals(
+                event.getEventType()
+        )
+                || HOT_STOCK_ORDER_CONFIRMED_EVENT_TYPE.equals(
+                event.getEventType()
+        )
+                || HOT_STOCK_ORDER_FAILED_EVENT_TYPE.equals(
+                event.getEventType()
+        ));
+    }
+
+    /**
+     * 根据事件类型确定目标交换机。
+     *
+     * @param event 已校验的 Admin Outbox 事件
+     * @return RabbitMQ 目标交换机
+     */
+    private String resolveExchange(PmsOutboxEvent event) {
+        if (HOT_STOCK_ORDER_CONFIRMED_EVENT_TYPE.equals(event.getEventType())
+                || HOT_STOCK_ORDER_FAILED_EVENT_TYPE.equals(event.getEventType())) {
+            return HotStockOrderMessageConstants.EXCHANGE;
+        }
+
+        return ProductCacheMessageConstants.PRODUCT_CACHE_EXCHANGE;
+    }
+
+    /**
+     * 根据事件类型确定目标路由键。
+     *
+     * @param event 已校验的 Admin Outbox 事件
+     * @return RabbitMQ 目标路由键
+     */
+    private String resolveRoutingKey(PmsOutboxEvent event) {
+        if (HOT_STOCK_ORDER_CONFIRMED_EVENT_TYPE.equals(event.getEventType())) {
+
+            return HotStockOrderMessageConstants.CONFIRMED_ROUTING_KEY;
+        }
+
+        if (HOT_STOCK_ORDER_FAILED_EVENT_TYPE.equals(event.getEventType())) {
+            return HotStockOrderMessageConstants.FAILED_ROUTING_KEY;
+        }
+
+        return ProductCacheMessageConstants.PRODUCT_CHANGED_ROUTING_KEY;
     }
 
     /**
@@ -224,4 +305,61 @@ public class ProductOutboxEventPublisher {
 
         return errorMessage.substring(0, 500);
     }
+
+    /**
+     * 判断 Outbox 事件是否已满足发布前置条件。
+     *
+     * <p>热点订单的成功或失败通知，都必须等待 Redis 中的预占用状态已终结。
+     * 这样 Portal 不会在 Redis 状态尚未确定时提前修改订单状态。</p>
+     *
+     * @param event 已校验的 Admin Outbox 事件
+     * @return 可以发送 RabbitMQ 时返回 {@code true}
+     */
+    private boolean isReadyToPublish(PmsOutboxEvent event) {
+        String expectedStatus;
+        String orderSn;
+
+        try {
+            if (HOT_STOCK_ORDER_CONFIRMED_EVENT_TYPE.equals(event.getEventType())) {
+                HotStockOrderConfirmedEvent confirmedEvent = objectMapper.readValue(
+                                event.getPayload(),
+                                HotStockOrderConfirmedEvent.class
+                        );
+                expectedStatus = HotStockReservationStatus.CONFIRMED.name();
+                orderSn = confirmedEvent.orderSn();
+            } else if (HOT_STOCK_ORDER_FAILED_EVENT_TYPE.equals(event.getEventType())) {
+                HotStockOrderFailedEvent failedEvent =
+                        objectMapper.readValue(
+                                event.getPayload(),
+                                HotStockOrderFailedEvent.class
+                        );
+                expectedStatus = HotStockReservationStatus.FAILED.name();
+                orderSn = failedEvent.orderSn();
+            } else {
+                return true;
+            }
+
+            Object actualStatus = stringRedisTemplate.opsForHash().get(
+                    HotSkuStockCacheKeys.reservationKey(orderSn),
+                    "status"
+            );
+
+            if (expectedStatus.equals(actualStatus)) {
+                return true;
+            }
+
+            markPublishFailed(
+                    event.getEventId(),
+                    "热点库存预占用尚未进入最终状态：" + expectedStatus
+            );
+            return false;
+        } catch (JsonProcessingException | RuntimeException exception) {
+            markPublishFailed(
+                    event.getEventId(),
+                    "无法确认热点库存 Redis 状态：" + exception.getMessage()
+            );
+            return false;
+        }
+    }
+
 }

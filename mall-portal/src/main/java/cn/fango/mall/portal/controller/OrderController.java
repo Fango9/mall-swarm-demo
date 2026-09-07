@@ -5,6 +5,7 @@ import cn.fango.mall.portal.dto.OrderCreateRequest;
 import cn.fango.mall.portal.dto.OrderDetailResponse;
 import cn.fango.mall.portal.service.CurrentMemberService;
 import cn.fango.mall.portal.service.OrderService;
+import cn.fango.mall.portal.performance.OrderTimingRecorder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +31,9 @@ public class OrderController {
      */
     private final CurrentMemberService currentMemberService;
 
+    /** P5 请求细分计时器。 */
+    private final OrderTimingRecorder orderTimingRecorder;
+
     /**
      * 创建会员订单接口。
      *
@@ -38,10 +42,12 @@ public class OrderController {
      */
     public OrderController(
             OrderService orderService,
-            CurrentMemberService currentMemberService
+            CurrentMemberService currentMemberService,
+            OrderTimingRecorder orderTimingRecorder
     ) {
         this.orderService = orderService;
         this.currentMemberService = currentMemberService;
+        this.orderTimingRecorder = orderTimingRecorder;
     }
 
     /**
@@ -62,7 +68,10 @@ public class OrderController {
             ) String idempotencyKey,
             @RequestBody(required = false) OrderCreateRequest request
     ) {
-        Long memberId = currentMemberService.getCurrentMemberId();
+        Long memberId = orderTimingRecorder.recordStage(
+                "current_member",
+                currentMemberService::getCurrentMemberId
+        );
         OrderDetailResponse order = orderService.createOrder(
                 memberId,
                 idempotencyKey,

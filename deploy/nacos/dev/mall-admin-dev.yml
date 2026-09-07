@@ -32,6 +32,12 @@ spring:
       simple:
         acknowledge-mode: auto
         default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1000
+          multiplier: 2.0
+          max-interval: 10000
 
 sa-token:
   token-name: Authorization
@@ -51,8 +57,9 @@ mall:
   internal:
     token: ${MALL_INTERNAL_TOKEN}
   outbox:
-    publish-fixed-delay-ms: 5000
-    publish-batch-size: 50
+    # Outbox 调度参数；实际吞吐还取决于每批执行时间，必须实测。
+    publish-fixed-delay-ms: 100
+    publish-batch-size: 500
     retry-delay-ms: 10000
     # 仅 SKU 1 启用 Redis 可预占库存快速过滤。
   hot-sku-stock:
@@ -60,7 +67,78 @@ mall:
     sku-ids:
       - 1
       - 30
-    refresh-fixed-delay-ms: 30000
+      # P5 A/B 同步基线 SKU。
+      - 72
+      # P5 A/B Redis 异步热点库存 SKU。
+      - 73
+      # P5 异步重复性验证 R2 SKU。
+      - 74
+      # P5 异步重复性验证 R3 SKU。
+      - 75
+      # P5 异步端到端上限测试 U1 SKU。
+      - 76
+      # P5 异步端到端上限测试 U2 SKU。
+      - 77
+      # P5 MySQL statement digest 采样 SKU。
+      - 78
+      # 独立诊断轮，探针通过后才正式发压。
+      - 79
+      # P5 高库存异步正式轮；探针和正式负载使用独立幂等前缀。
+      - 80
+      # P5 全成功阶梯测试：600 RPS 短突发。
+      - 81
+      # P5 批处理上限 100 的独立验证 SKU。
+      - 82
+      # P5 强制重建 Admin 后验证 100 单消费批的独立 SKU。
+      - 83
+      # P5 1000 RPS 全成功与耗时分解验证 SKU。
+      - 84
+      # P5 Gateway 与 Portal 同步路径耗时分解验证 SKU。
+      - 85
+      # P5 使用边界指标快照复核 Gateway 与 Portal 耗时的独立 SKU。
+      - 86
+      # P5 默认 Hikari 连接池高负载基线 SKU。
+      - 87
+      # P5 Hikari 40 连接优化对比 SKU。
+      - 88
+      # P5 Relay 状态条件转移修复后的 Hikari 40 对比 SKU。
+      - 89
+      # P5 Hikari 60 连接优化对比 SKU。
+      - 90
+      # P5 JDBC generated keys 的 Portal 本地事务复测 SKU。
+      - 91
+      # P5 Hikari 50 连接中间档对比 SKU。
+      - 92
+      # P5 当前 Portal 镜像下 Hikari 40 对照 SKU。
+      - 93
+      # P5 Portal/Gateway/JDBC 细粒度耗时诊断 SKU。
+      - 94
+      # P5 Portal 连接获取优化后的最小采集复测 SKU。
+      - 95
+    # 仅审计 Redis 键健康度，绝不以 MySQL 覆盖 Redis 预占用余额。
+    audit-fixed-delay-millis: 30000
+  # Redis Lua + Stream Relay 热点库存预占用；链路完整验证前保持关闭。
+  hot-stock-reservation:
+    # P5 A/B B 组：本轮压测流量仅使用 SKU 73。
+    enabled: true
+    expire-millis: 900000
+    state-retention-millis: 86400000
+    relay-consumer-group: mall-hot-stock-relay
+    relay-consumer-name: ${HOSTNAME:mall-admin-relay}
+    relay-exchange: mall.hot-stock.reservation.exchange
+    relay-routing-key: hot-stock.reservation.accepted
+    relay-batch-size: 100
+    # RabbitMQ 消费持久化批上限；实际批次受消息到达节奏影响，以提交摘要为准。
+    persistence-batch-size: 100
+    reconciliation-max-reservations: 1000
+    # 仅人工调用修复接口时使用；Lua 在锁持有期间拒绝新的首次预占用。
+    reconciliation-repair-lock-ttl-millis: 30000
+    relay-confirm-timeout-millis: 5000
+    relay-fixed-delay-millis: 200
+    relay-claim-min-idle-millis: 30000
+    dead-letter-retry-delay-millis: 10000
+    timeout-release-batch-size: 100
+    timeout-release-fixed-delay-millis: 1000
 
 management:
   endpoints:

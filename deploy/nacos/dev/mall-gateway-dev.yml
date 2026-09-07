@@ -15,6 +15,12 @@ spring:
       database: 0
   cloud:
     gateway:
+      metrics:
+        enabled: true
+      httpclient:
+        pool:
+          # 仅开启观测；尚未改变 Gateway 连接池类型或连接数。
+          metrics: true
       routes:
         - id: mall-demo
           uri: lb://mall-demo

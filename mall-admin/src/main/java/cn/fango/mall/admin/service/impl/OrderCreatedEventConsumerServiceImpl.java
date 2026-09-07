@@ -61,8 +61,7 @@ public class OrderCreatedEventConsumerServiceImpl
         int confirmed = pmsOrderEventConsumerMapper.confirmLockedReservations(event.orderSn());
         if (confirmed <= 0) {
             throw new ApiException(
-                    StockReservationErrorCode
-                            .STOCK_RESERVATION_CONFIRM_FAILED
+                    StockReservationErrorCode.STOCK_RESERVATION_CONFIRM_FAILED
             );
         }
     }

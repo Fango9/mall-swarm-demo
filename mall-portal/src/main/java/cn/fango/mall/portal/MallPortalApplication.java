@@ -16,7 +16,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 })
 @EnableFeignClients
 @EnableScheduling
-@MapperScan("cn.fango.mall.mbg.mapper")
+@MapperScan({
+        "cn.fango.mall.mbg.mapper",
+        "cn.fango.mall.portal.mapper"
+})
 @ConfigurationPropertiesScan
 public class MallPortalApplication {
 

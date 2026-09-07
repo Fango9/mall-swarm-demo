@@ -18,12 +18,24 @@ spring:
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
     virtual-host: "${RABBITMQ_VIRTUAL_HOST:/}"
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 
 mall:
   stock-reservation:
     expire-minutes: 15
     expire-release-fixed-delay-ms: 5000
     expire-release-batch-size: 100
+  # 定时任务的 @Scheduled 占位符必须在测试启动时可解析；测试中不开启热点链路。
+  hot-stock-reservation:
+    enabled: false
+    relay-fixed-delay-millis: 200
+    persistence-batch-size: 10
+    reconciliation-max-reservations: 100
+    reconciliation-repair-lock-ttl-millis: 30000
+    timeout-release-fixed-delay-millis: 1000
   internal:
     token: ${MALL_INTERNAL_TOKEN}
   outbox:

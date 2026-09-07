@@ -22,6 +22,9 @@ public enum StockReservationErrorCode implements IErrorCode {
     /** 当前预占已释放，不能再次预占。 */
     RESERVATION_ALREADY_RELEASED(40943, "库存预占已释放，不能再次预占"),
 
+    /** 库存预占当前状态不允许重复预占。 */
+    RESERVATION_STATUS_CONFLICT(40945, "库存预占当前状态不允许重复预占"),
+
     /** SKU 不存在或可用库存不足。 */
     STOCK_NOT_ENOUGH(40942, "SKU 不存在或可用库存不足"),
 
@@ -38,7 +41,28 @@ public enum StockReservationErrorCode implements IErrorCode {
     ORDER_CREATED_EVENT_INVALID(43104, "订单创建事件内容非法"),
 
     /** 订单创建事件无法确认库存预占。 */
-    STOCK_RESERVATION_CONFIRM_FAILED(53043, "确认库存预占失败");
+    STOCK_RESERVATION_CONFIRM_FAILED(53043, "确认库存预占失败"),
+
+    /** 热点 SKU 的 Redis 可预占库存不足。 */
+    HOT_STOCK_NOT_ENOUGH(40944, "热点 SKU 可预占库存不足"),
+
+    /** 热点 SKU 的 Redis 可预占库存不足。 */
+    HOT_STOCK_RESERVATION_UNAVAILABLE(53044, "热点库存预约暂不可用，请稍后重试"),
+
+    /** Redis Stream Relay 投递的热点库存预占用事件内容非法。 */
+    HOT_STOCK_RESERVATION_EVENT_INVALID(43105, "热点库存预约事件内容非法"),
+
+    /** 热点库存预占用无法在 MySQL 中完成锁定库存和预占用记录写入。 */
+    HOT_STOCK_RESERVATION_PERSIST_FAILED(53045, "热点库存预约落库失败"),
+
+    /** 热点订单确认事件先到，等待对应库存预占用完成 MySQL 落库。 */
+    HOT_STOCK_ORDER_CONFIRM_PENDING(53046, "热点库存预占用尚未完成落库，请稍后重试"),
+
+    /** 热点库存确认事务无法写入通知 Portal 的 Outbox 事件。 */
+    HOT_STOCK_ORDER_CONFIRM_OUTBOX_FAILED(53047, "热点库存确认通知创建失败"),
+
+    /** 热点库存最终失败后无法写入通知 Portal 的 Outbox 事件。 */
+    HOT_STOCK_ORDER_FAILURE_OUTBOX_FAILED(53048, "热点库存失败通知创建失败");
 
     private final long code;
     private final String message;

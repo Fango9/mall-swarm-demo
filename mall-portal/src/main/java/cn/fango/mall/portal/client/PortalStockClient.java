@@ -1,6 +1,7 @@
 package cn.fango.mall.portal.client;
 
 import cn.fango.mall.common.api.CommonResult;
+import cn.fango.mall.common.stock.HotStockReservationAcceptResult;
 import cn.fango.mall.common.stock.StockReleaseRequest;
 import cn.fango.mall.common.stock.StockReservationRequest;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -24,7 +25,20 @@ public interface PortalStockClient {
      * @return 统一响应中的预占结果
      */
     @PostMapping("/internal/portal/stocks/reservations")
-    CommonResult<Boolean> reserveStock(
+    CommonResult<Boolean> reserveStock(@RequestBody StockReservationRequest request);
+
+    /**
+     * 尝试由 Admin 的 Redis Lua 热点预占用链路受理库存请求。
+     *
+     * <p>返回 {@code NOT_HOT} 时，Portal 应改走既有同步 MySQL 预占接口；
+     * 返回 {@code ACCEPTED} 或 {@code ALREADY_ACCEPTED} 时，不得再调用
+     * 同步预占接口。</p>
+     *
+     * @param request 包含预占用编号和 SKU 明细的库存预占用请求
+     * @return 统一响应中的热点预占用受理结果
+     */
+    @PostMapping("/internal/portal/stocks/hot-reservations")
+    CommonResult<HotStockReservationAcceptResult> acceptHotReservation(
             @RequestBody StockReservationRequest request
     );
 

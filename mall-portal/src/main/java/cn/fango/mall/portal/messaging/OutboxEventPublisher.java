@@ -1,5 +1,6 @@
 package cn.fango.mall.portal.messaging;
 
+import cn.fango.mall.common.messaging.HotStockOrderMessageConstants;
 import cn.fango.mall.common.messaging.OrderMessageConstants;
 import cn.fango.mall.mbg.mapper.OmsOutboxEventMapper;
 import cn.fango.mall.mbg.model.OmsOutboxEvent;
@@ -24,8 +25,9 @@ import java.util.List;
 @Component
 public class OutboxEventPublisher {
 
-    private static final String ORDER_CREATED_EVENT_TYPE =
-            "ORDER_CREATED";
+    private static final String ORDER_CREATED_EVENT_TYPE = "ORDER_CREATED";
+
+    private static final String HOT_STOCK_ORDER_CREATED_EVENT_TYPE = "HOT_STOCK_ORDER_CREATED";
 
     /**
      * 事务外盒事件数据访问对象。
@@ -102,7 +104,7 @@ public class OutboxEventPublisher {
      * @param event 待发布的 Outbox 事件
      */
     private void publishEvent(OmsOutboxEvent event) {
-        if (!isOrderCreatedEvent(event)) {
+        if (!isSupportedEvent(event)) {
             markPublishFailed(
                     event.getEventId(),
                     "不支持的 Outbox 事件类型"
@@ -114,8 +116,8 @@ public class OutboxEventPublisher {
             Message message = createMessage(event);
 
             rabbitTemplate.send(
-                    OrderMessageConstants.ORDER_EXCHANGE,
-                    OrderMessageConstants.ORDER_CREATED_ROUTING_KEY,
+                    resolveExchange(event),
+                    resolveRoutingKey(event),
                     message,
                     new CorrelationData(event.getEventId())
             );
@@ -222,18 +224,47 @@ public class OutboxEventPublisher {
     }
 
     /**
-     * 判断事件是否是当前发布器支持的订单创建事件。
+     * 判断事件是否为当前发布器支持的订单事件。
      *
      * @param event 待判断的 Outbox 事件
-     * @return 是订单创建事件时返回 true
+     * @return 支持发布时返回 {@code true}
      */
-    private boolean isOrderCreatedEvent(OmsOutboxEvent event) {
+    private boolean isSupportedEvent(OmsOutboxEvent event) {
         return event != null
                 && StringUtils.hasText(event.getEventId())
                 && StringUtils.hasText(event.getPayload())
-                && ORDER_CREATED_EVENT_TYPE.equals(
+                && (ORDER_CREATED_EVENT_TYPE.equals(event.getEventType())
+                || HOT_STOCK_ORDER_CREATED_EVENT_TYPE.equals(
                 event.getEventType()
-        );
+        ));
+    }
+
+    /**
+     * 根据事件类型确定目标交换机。
+     *
+     * @param event 已校验的 Outbox 事件
+     * @return RabbitMQ 目标交换机
+     */
+    private String resolveExchange(OmsOutboxEvent event) {
+        if (HOT_STOCK_ORDER_CREATED_EVENT_TYPE.equals(event.getEventType())) {
+            return HotStockOrderMessageConstants.EXCHANGE;
+        }
+
+        return OrderMessageConstants.ORDER_EXCHANGE;
+    }
+
+    /**
+     * 根据事件类型确定目标路由键。
+     *
+     * @param event 已校验的 Outbox 事件
+     * @return RabbitMQ 目标路由键
+     */
+    private String resolveRoutingKey(OmsOutboxEvent event) {
+        if (HOT_STOCK_ORDER_CREATED_EVENT_TYPE.equals(event.getEventType())) {
+            return HotStockOrderMessageConstants.ROUTING_KEY;
+        }
+
+        return OrderMessageConstants.ORDER_CREATED_ROUTING_KEY;
     }
 
     /**

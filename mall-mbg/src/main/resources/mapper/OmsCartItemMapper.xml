@@ -44,6 +44,7 @@
       </foreach>
     </where>
   </sql>
+
   <sql id="Update_By_Example_Where_Clause">
     <where>
       <foreach collection="example.oredCriteria" item="criteria" separator="or">
@@ -73,10 +74,12 @@
       </foreach>
     </where>
   </sql>
+
   <sql id="Base_Column_List">
     id, member_id, product_id, product_name, product_pic, product_sku_id, product_sku_code, 
     product_sku_attrs, price, quantity, create_time, modify_time
   </sql>
+
   <select id="selectByExample" parameterType="cn.fango.mall.mbg.model.OmsCartItemExample" resultMap="BaseResultMap">
     select
     <if test="distinct">
@@ -91,6 +94,7 @@
       order by ${orderByClause}
     </if>
   </select>
+
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
     <include refid="Base_Column_List" />

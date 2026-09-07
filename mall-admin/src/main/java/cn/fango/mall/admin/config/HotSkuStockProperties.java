@@ -27,6 +27,11 @@ public class HotSkuStockProperties {
     private List<Long> skuIds = new ArrayList<>();
 
     /**
+     * 热点库存审计任务的固定执行间隔，单位毫秒。
+     */
+    private long auditFixedDelayMillis = 30000;
+
+    /**
      * 获取是否启用热点 SKU Redis 快速库存过滤。
      *
      * @return 启用时返回 {@code true}
@@ -60,5 +65,23 @@ public class HotSkuStockProperties {
      */
     public void setSkuIds(List<Long> skuIds) {
         this.skuIds = skuIds == null ? new ArrayList<>() : new ArrayList<>(skuIds);
+    }
+
+    /**
+     * 获取热点库存审计任务的固定执行间隔。
+     *
+     * @return 固定执行间隔，单位毫秒
+     */
+    public long getAuditFixedDelayMillis() {
+        return auditFixedDelayMillis;
+    }
+
+    /**
+     * 设置热点库存审计任务的固定执行间隔。
+     *
+     * @param auditFixedDelayMillis 固定执行间隔，单位毫秒
+     */
+    public void setAuditFixedDelayMillis(long auditFixedDelayMillis) {
+        this.auditFixedDelayMillis = auditFixedDelayMillis;
     }
 }

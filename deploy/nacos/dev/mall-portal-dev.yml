@@ -12,6 +12,10 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # SKU93 使用当前 JDBC generated keys 镜像复测 40，形成 40/50/60 同代码对照。
+      maximum-pool-size: 40
+      minimum-idle: 10
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -35,6 +39,16 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1000
+          multiplier: 2.0
+          max-interval: 10000
 
 sa-token:
   token-name: Authorization
@@ -47,9 +61,14 @@ sa-token:
   is-share: true
 
 mall:
+  performance:
+    order-timing:
+      # JDBC 包装器只在专项诊断轮开启；开启后必须重启 Portal 才会生效。
+      jdbc-enabled: false
   outbox:
-    publish-fixed-delay-ms: 5000
-    publish-batch-size: 50
+    # Outbox 调度参数；实际吞吐还取决于每批执行时间，必须实测。
+    publish-fixed-delay-ms: 100
+    publish-batch-size: 500
     retry-delay-ms: 10000
   internal:
     token: ${MALL_INTERNAL_TOKEN}

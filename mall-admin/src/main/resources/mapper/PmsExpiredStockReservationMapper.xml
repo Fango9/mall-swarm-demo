@@ -70,4 +70,22 @@
           AND expire_at &lt;= #{now,jdbcType=TIMESTAMP}
     </update>
 
+    <select id="selectByReservationNoForUpdate"
+            resultMap="ExpiredStockReservationResultMap">
+        SELECT
+            id,
+            reservation_no,
+            sku_id,
+            quantity,
+            status,
+            expire_at,
+            create_time,
+            modify_time
+        FROM pms_stock_reservation
+        WHERE reservation_no = #{reservationNo,jdbcType=VARCHAR}
+        ORDER BY sku_id ASC,
+                 id ASC
+        FOR UPDATE
+    </select>
+
 </mapper>

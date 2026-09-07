@@ -40,4 +40,17 @@ public interface PmsExpiredStockReservationMapper {
             @Param("now") Date now
     );
 
+    /**
+     * 按预占用编号查询并锁定全部预占明细。
+     *
+     * <p>热点超时释放必须先锁住同一 reservationNo 的全部 SKU 行，避免订单确认与
+     * 多 SKU 释放交错后出现部分 CONFIRMED、部分 RELEASED。</p>
+     *
+     * @param reservationNo 库存预占用编号
+     * @return 被行锁保护的预占明细
+     */
+    List<PmsStockReservation> selectByReservationNoForUpdate(
+            @Param("reservationNo") String reservationNo
+    );
+
 }

@@ -3,14 +3,13 @@ package cn.fango.mall.portal.service.impl;
 import cn.fango.mall.common.api.CommonResult;
 import cn.fango.mall.common.api.ResultCode;
 import cn.fango.mall.common.exception.ApiException;
+import cn.fango.mall.common.stock.HotStockReservationAcceptResult;
 import cn.fango.mall.common.stock.StockReleaseRequest;
 import cn.fango.mall.common.stock.StockReservationItem;
 import cn.fango.mall.common.stock.StockReservationRequest;
-import cn.fango.mall.mbg.mapper.OmsCartItemMapper;
 import cn.fango.mall.mbg.mapper.OmsOrderItemMapper;
 import cn.fango.mall.mbg.mapper.OmsOrderMapper;
 import cn.fango.mall.mbg.model.OmsCartItem;
-import cn.fango.mall.mbg.model.OmsCartItemExample;
 import cn.fango.mall.mbg.model.OmsOrder;
 import cn.fango.mall.mbg.model.OmsOrderExample;
 import cn.fango.mall.mbg.model.OmsOrderItem;
@@ -20,12 +19,16 @@ import cn.fango.mall.portal.client.PortalStockClient;
 import cn.fango.mall.portal.dto.OrderCreateRequest;
 import cn.fango.mall.portal.dto.OrderDetailResponse;
 import cn.fango.mall.portal.service.OrderService;
+import cn.fango.mall.portal.performance.OrderTimingRecorder;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -48,11 +51,6 @@ public class OrderServiceImpl implements OrderService {
             LoggerFactory.getLogger(OrderServiceImpl.class);
 
     /**
-     * 购物车项数据访问对象。
-     */
-    private final OmsCartItemMapper omsCartItemMapper;
-
-    /**
      * 订单主记录数据访问对象。
      */
     private final OmsOrderMapper omsOrderMapper;
@@ -73,26 +71,44 @@ public class OrderServiceImpl implements OrderService {
     private final OrderLocalTransactionService orderLocalTransactionService;
 
     /**
+     * 热点 Redis 预扣和同步库存预占的耗时指标。
+     */
+    private final Timer stockReservationTimer;
+
+    /**
+     * Portal 本地订单事务耗时指标。
+     */
+    private final Timer localTransactionTimer;
+
+    /** P5 请求细分计时器。 */
+    private final OrderTimingRecorder orderTimingRecorder;
+
+    /**
      * 创建会员订单服务。
      *
-     * @param omsCartItemMapper 购物车项数据访问对象
      * @param omsOrderMapper 订单主记录数据访问对象
      * @param omsOrderItemMapper 订单明细数据访问对象
      * @param portalStockClient 后台库存内部接口客户端
      * @param orderLocalTransactionService Portal 本地订单事务服务
+     * @param meterRegistry 指标注册表
      */
     public OrderServiceImpl(
-            OmsCartItemMapper omsCartItemMapper,
             OmsOrderMapper omsOrderMapper,
             OmsOrderItemMapper omsOrderItemMapper,
             PortalStockClient portalStockClient,
-            OrderLocalTransactionService orderLocalTransactionService
+            OrderLocalTransactionService orderLocalTransactionService,
+            MeterRegistry meterRegistry,
+            OrderTimingRecorder orderTimingRecorder
     ) {
-        this.omsCartItemMapper = omsCartItemMapper;
         this.omsOrderMapper = omsOrderMapper;
         this.omsOrderItemMapper = omsOrderItemMapper;
         this.portalStockClient = portalStockClient;
         this.orderLocalTransactionService = orderLocalTransactionService;
+        this.stockReservationTimer = Timer.builder("p5.portal.order.stock_reservation.duration")
+                .register(meterRegistry);
+        this.localTransactionTimer = Timer.builder("p5.portal.order.local_transaction.duration")
+                .register(meterRegistry);
+        this.orderTimingRecorder = orderTimingRecorder;
     }
 
     /**
@@ -107,38 +123,78 @@ public class OrderServiceImpl implements OrderService {
      * @return 已创建或幂等命中的订单详情
      */
     @Override
-    public OrderDetailResponse createOrder(
-            Long memberId,
-            String idempotencyKey,
-            OrderCreateRequest request
-    ) {
+    public OrderDetailResponse createOrder(Long memberId, String idempotencyKey, OrderCreateRequest request) {
+        // 格式化幂等键
         String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
-        validateCreateOrderRequest(memberId, normalizedIdempotencyKey, request);
 
-        OmsOrder existingOrder = findOrderByIdempotencyKey(memberId, normalizedIdempotencyKey);
+        orderTimingRecorder.recordStage(
+                "request_validation",
+                () -> validateCreateOrderRequest(memberId, normalizedIdempotencyKey, request)
+        );
+
+        OrderLocalTransactionService.CreationData creationData =
+                orderLocalTransactionService.loadCreationData(
+                        memberId,
+                        normalizedIdempotencyKey,
+                        request.cartItemIds()
+                );
+
+        OmsOrder existingOrder = creationData.existingOrder();
         if (existingOrder != null) {
             return getOrderDetail(memberId, existingOrder.getId());
         }
 
-        List<OmsCartItem> cartItems = loadSelectedCartItems(
-                memberId,
-                request.cartItemIds()
-        );
-        String orderSn = generateOrderSn();
+        List<OmsCartItem> cartItems = creationData.cartItems();
 
-        reserveStock(orderSn, cartItems);
+        // 根据用户 id 和幂等键生成唯一订单编号，后续预占用也使用此编号
+        String orderSn = generateOrderSn(
+                memberId,
+                normalizedIdempotencyKey
+        );
+
+        // 使用订单编号、skuid、数量，生成库存预占用请求，
+        StockReservationRequest stockReservationRequest = orderTimingRecorder.recordStage(
+                "reservation_request_build",
+                () -> createStockReservationRequest(orderSn, cartItems)
+        );
+
+        // 尝试使用热点库存 sku 预占用
+        Timer.Sample stockReservationSample = Timer.start();
+        boolean hotReservationAccepted;
+        try {
+            hotReservationAccepted = orderTimingRecorder.recordStage(
+                    "hot_reservation_http",
+                    () -> tryAcceptHotReservation(stockReservationRequest)
+            );
+
+            if (!hotReservationAccepted) {
+                // 非全部热点 sku，预占库存
+                reserveStock(stockReservationRequest);
+            }
+        } finally {
+            stockReservationSample.stop(stockReservationTimer);
+        }
 
         OmsOrder createdOrder;
         try {
-            createdOrder = orderLocalTransactionService.createOrder(
-                    memberId,
-                    normalizedIdempotencyKey,
-                    orderSn,
-                    cartItems
-            );
+            // 构建订单
+            Timer.Sample localTransactionSample = Timer.start();
+            try {
+                createdOrder = orderTimingRecorder.recordStage(
+                        "local_transaction_call",
+                        () -> orderLocalTransactionService.createOrder(
+                                memberId,
+                                normalizedIdempotencyKey,
+                                orderSn,
+                                cartItems,
+                                hotReservationAccepted
+                        )
+                );
+            } finally {
+                localTransactionSample.stop(localTransactionTimer);
+            }
         } catch (DuplicateKeyException exception) {
-            releaseStockAfterLocalFailure(orderSn, exception);
-
+            // 按会员 id 和幂等键查询已存在的幂等订单，避免并发重复下单被唯一索引冲突拦截，但实际订单已创建未返回
             OmsOrder idempotentOrder = findOrderByIdempotencyKey(
                     memberId,
                     normalizedIdempotencyKey
@@ -147,33 +203,39 @@ public class OrderServiceImpl implements OrderService {
                 return getOrderDetail(memberId, idempotentOrder.getId());
             }
 
-            LOGGER.error(
-                    "订单唯一索引冲突，且未查询到幂等订单，orderSn={}",
-                    orderSn,
-                    exception
-            );
-            throw new ApiException(
-                    OrderErrorCode.ORDER_CREATE_FAILED,
-                    exception
-            );
+            if (!hotReservationAccepted) {
+                // 非全部热点 sku，释放 redis 预占库存
+                releaseStockAfterLocalFailure(orderSn, exception);
+            }
+
+            LOGGER.error("订单唯一索引冲突，且未查询到幂等订单，orderSn={}", orderSn, exception);
+            throw new ApiException(OrderErrorCode.ORDER_CREATE_FAILED, exception);
+
         } catch (ApiException exception) {
-            releaseStockAfterLocalFailure(orderSn, exception);
+            if (!hotReservationAccepted) {
+                // 非全部热点 sku，释放 redis 预占库存
+                releaseStockAfterLocalFailure(orderSn, exception);
+            }
             throw exception;
         } catch (RuntimeException exception) {
-            releaseStockAfterLocalFailure(orderSn, exception);
+            if (!hotReservationAccepted) {
+                // 非全部热点 sku，释放 redis 预占库存
+                releaseStockAfterLocalFailure(orderSn, exception);
+            }
 
-            LOGGER.error(
-                    "本地订单事务失败，已执行库存释放补偿，orderSn={}",
+            LOGGER.error(hotReservationAccepted
+                            ? "本地订单事务失败，热点预约等待超时补偿，orderSn={}"
+                            : "本地订单事务失败，已执行库存释放补偿，orderSn={}",
                     orderSn,
                     exception
             );
-            throw new ApiException(
-                    OrderErrorCode.ORDER_CREATE_FAILED,
-                    exception
-            );
+            throw new ApiException(OrderErrorCode.ORDER_CREATE_FAILED, exception);
         }
 
-        return getOrderDetail(memberId, createdOrder.getId());
+        return OrderResponseAssembler.toCreatedDetailResponse(
+                createdOrder,
+                cartItems
+        );
     }
 
     /**
@@ -188,8 +250,14 @@ public class OrderServiceImpl implements OrderService {
     public OrderDetailResponse getOrderDetail(Long memberId, Long orderId) {
         validateMemberAndOrderId(memberId, orderId);
 
-        OmsOrder order = getOwnedOrder(memberId, orderId);
-        List<OmsOrderItem> orderItems = listOrderItems(order.getId());
+        OmsOrder order = orderTimingRecorder.recordStage(
+                "order_detail_select",
+                () -> getOwnedOrder(memberId, orderId)
+        );
+        List<OmsOrderItem> orderItems = orderTimingRecorder.recordStage(
+                "order_items_select",
+                () -> listOrderItems(order.getId())
+        );
 
         return OrderResponseAssembler.toDetailResponse(order, orderItems);
     }
@@ -209,39 +277,37 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * 生成长度小于订单编号字段上限的订单编号。
+     * 根据会员和幂等键稳定生成订单编号，同时作为热点库存预占用编号。
      *
-     * @return 新生成的订单编号
+     * <p>若 Portal 在 Redis Lua 成功后、订单本地事务前崩溃，客户端以相同
+     * Idempotency-Key 重试时必须使用相同预占用编号，Lua 才能识别为幂等重试，
+     * 而不是再次扣减 Redis 库存。</p>
+     *
+     * @param memberId 当前登录会员主键
+     * @param idempotencyKey 已标准化的下单幂等键
+     * @return 稳定生成的订单编号
      */
-    private String generateOrderSn() {
-        String uniquePart = UUID.randomUUID().toString().replace("-", "");
+    private String generateOrderSn(
+            Long memberId,
+            String idempotencyKey
+    ) {
+        String stableInput = memberId + ":" + idempotencyKey;
+        String uniquePart = UUID.nameUUIDFromBytes(
+                stableInput.getBytes(StandardCharsets.UTF_8)
+        ).toString().replace("-", "");
 
         return "O" + uniquePart;
     }
 
     /**
-     * 调用 mall-admin 原子预占当前购物车快照中的全部 SKU 库存。
+     * 调用 mall-admin 同步预占库存。
      *
-     * @param orderSn 同时作为库存预占编号的订单编号
-     * @param cartItems 本次结算的购物车快照
+     * <p>本方法只用于非热点订单；热点订单一旦 Redis 已受理，
+     * 不允许再调用该方法，否则会产生重复库存预占。</p>
+     *
+     * @param request 已由购物车快照构造完成的库存预占用请求
      */
-    private void reserveStock(
-            String orderSn,
-            List<OmsCartItem> cartItems
-    ) {
-        List<StockReservationItem> items = new ArrayList<>();
-
-        for (OmsCartItem cartItem : cartItems) {
-            items.add(new StockReservationItem(
-                    cartItem.getProductSkuId(),
-                    cartItem.getQuantity()
-            ));
-        }
-
-        StockReservationRequest request = new StockReservationRequest(
-                orderSn,
-                items
-        );
+    private void reserveStock(StockReservationRequest request) {
         CommonResult<Boolean> result;
 
         try {
@@ -258,6 +324,78 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
+     * 根据当前购物车快照构造库存预占用请求。
+     *
+     * <p>热点 Redis 预占用与普通 MySQL 预占必须使用同一份 SKU/数量快照，
+     * 不能在两条链路中分别构造并产生不一致的库存明细。</p>
+     *
+     * @param orderSn 同时作为库存预占用编号的订单编号
+     * @param cartItems 本次结算的购物车快照
+     * @return 库存预占用请求
+     */
+    private StockReservationRequest createStockReservationRequest(String orderSn, List<OmsCartItem> cartItems) {
+        List<StockReservationItem> items = new ArrayList<>();
+
+        for (OmsCartItem cartItem : cartItems) {
+            items.add(
+                    new StockReservationItem(
+                            cartItem.getProductSkuId(),
+                            cartItem.getQuantity()
+                    )
+            );
+        }
+
+        return new StockReservationRequest(orderSn, items);
+    }
+
+    /**
+     * 尝试由 Admin 的 Redis Lua 热点预占用链路受理库存请求。
+     *
+     * <p>只有 {@code ACCEPTED} 和 {@code ALREADY_ACCEPTED} 返回 {@code true}；
+     * {@code NOT_HOT} 返回 {@code false}，调用方才可以走既有 MySQL 预占。
+     * 远程调用异常或未知结果必须失败关闭，不能擅自回退 MySQL。</p>
+     *
+     * @param request 已由购物车快照构造完成的库存预占用请求
+     * @return Redis 已可靠受理预占用时返回 {@code true}
+     */
+    private boolean tryAcceptHotReservation(StockReservationRequest request) {
+        CommonResult<HotStockReservationAcceptResult> result;
+
+        try {
+            result = portalStockClient.acceptHotReservation(request);
+        } catch (RuntimeException exception) {
+            throw new ApiException(
+                    OrderErrorCode.STOCK_RESERVATION_FAILED,
+                    exception
+            );
+        }
+
+        if (result == null
+                || result.getCode() != ResultCode.SUCCESS.getCode()
+                || result.getData() == null) {
+            throw new ApiException(
+                    OrderErrorCode.STOCK_RESERVATION_FAILED
+            );
+        }
+
+        if (result.getData()
+                == HotStockReservationAcceptResult.ACCEPTED
+                || result.getData()
+                == HotStockReservationAcceptResult.ALREADY_ACCEPTED) {
+            return true;
+        }
+
+        if (result.getData()
+                == HotStockReservationAcceptResult.NOT_HOT) {
+            return false;
+        }
+
+        throw new ApiException(
+                OrderErrorCode.STOCK_RESERVATION_FAILED
+        );
+    }
+
+    /**
      * 在本地订单事务失败后释放已预占库存。
      *
      * <p>释放失败不会覆盖最初的本地失败异常，而是作为 suppressed exception
@@ -266,10 +404,7 @@ public class OrderServiceImpl implements OrderService {
      * @param orderSn 库存预占编号
      * @param originalException 导致本地事务失败的原始异常
      */
-    private void releaseStockAfterLocalFailure(
-            String orderSn,
-            RuntimeException originalException
-    ) {
+    private void releaseStockAfterLocalFailure(String orderSn, RuntimeException originalException) {
         try {
             releaseStock(orderSn);
         } catch (RuntimeException releaseException) {
@@ -351,10 +486,7 @@ public class OrderServiceImpl implements OrderService {
      * @param idempotencyKey 已标准化的幂等键
      * @return 已创建的订单；不存在时返回 {@code null}
      */
-    private OmsOrder findOrderByIdempotencyKey(
-            Long memberId,
-            String idempotencyKey
-    ) {
+    private OmsOrder findOrderByIdempotencyKey(Long memberId, String idempotencyKey) {
         OmsOrderExample example = new OmsOrderExample();
         example.createCriteria()
                 .andMemberIdEqualTo(memberId)
@@ -366,32 +498,6 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return orders.get(0);
-    }
-
-    /**
-     * 查询当前会员选中的购物车项，并确认每个请求主键均属于该会员。
-     *
-     * @param memberId 当前登录会员主键
-     * @param cartItemIds 本次结算的购物车项主键列表
-     * @return 购物车项快照
-     */
-    private List<OmsCartItem> loadSelectedCartItems(
-            Long memberId,
-            List<Long> cartItemIds
-    ) {
-        OmsCartItemExample example = new OmsCartItemExample();
-        example.createCriteria()
-                .andMemberIdEqualTo(memberId)
-                .andIdIn(cartItemIds);
-
-        List<OmsCartItem> cartItems =
-                omsCartItemMapper.selectByExample(example);
-
-        if (cartItems.size() != cartItemIds.size()) {
-            throw new ApiException(OrderErrorCode.ORDER_CART_ITEM_NOT_FOUND);
-        }
-
-        return cartItems;
     }
 
     /**

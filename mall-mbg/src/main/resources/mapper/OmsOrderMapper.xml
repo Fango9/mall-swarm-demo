@@ -106,17 +106,15 @@
     <selectKey keyProperty="id" order="AFTER" resultType="java.lang.Long">
       SELECT LAST_INSERT_ID()
     </selectKey>
-    insert into oms_order (order_sn, member_id, idempotency_key, 
+    insert into oms_order (order_sn, member_id, idempotency_key,
       status, total_amount, create_time, 
       modify_time)
     values (#{orderSn,jdbcType=VARCHAR}, #{memberId,jdbcType=BIGINT}, #{idempotencyKey,jdbcType=VARCHAR}, 
       #{status,jdbcType=VARCHAR}, #{totalAmount,jdbcType=DECIMAL}, #{createTime,jdbcType=TIMESTAMP}, 
       #{modifyTime,jdbcType=TIMESTAMP})
   </insert>
-  <insert id="insertSelective" parameterType="cn.fango.mall.mbg.model.OmsOrder">
-    <selectKey keyProperty="id" order="AFTER" resultType="java.lang.Long">
-      SELECT LAST_INSERT_ID()
-    </selectKey>
+  <insert id="insertSelective" parameterType="cn.fango.mall.mbg.model.OmsOrder"
+          useGeneratedKeys="true" keyProperty="id" keyColumn="id">
     insert into oms_order
     <trim prefix="(" suffix=")" suffixOverrides=",">
       <if test="orderSn != null">

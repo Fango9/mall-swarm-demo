@@ -12,6 +12,27 @@
           AND stock - lock_stock >= #{quantity}
     </update>
 
+    <insert id="batchInsertReservations">
+        INSERT INTO pms_stock_reservation
+        (
+            reservation_no,
+            sku_id,
+            quantity,
+            status,
+            expire_at
+        )
+        VALUES
+        <foreach collection="reservations" item="reservation" separator=",">
+            (
+                #{reservation.reservationNo,jdbcType=VARCHAR},
+                #{reservation.skuId,jdbcType=BIGINT},
+                #{reservation.quantity,jdbcType=INTEGER},
+                #{reservation.status,jdbcType=VARCHAR},
+                #{reservation.expireAt,jdbcType=TIMESTAMP}
+            )
+        </foreach>
+    </insert>
+
     <update id="releaseStock">
         UPDATE pms_sku_stock
         SET lock_stock = lock_stock - #{quantity}

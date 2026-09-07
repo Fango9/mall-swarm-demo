@@ -1,11 +1,13 @@
 package cn.fango.mall.portal.service.impl;
 
+import cn.fango.mall.mbg.model.OmsCartItem;
 import cn.fango.mall.mbg.model.OmsOrder;
 import cn.fango.mall.mbg.model.OmsOrderItem;
 import cn.fango.mall.portal.api.OrderStatus;
 import cn.fango.mall.portal.dto.OrderDetailResponse;
 import cn.fango.mall.portal.dto.OrderItemResponse;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,6 +37,53 @@ final class OrderResponseAssembler {
 
         for (OmsOrderItem orderItem : orderItems) {
             itemResponses.add(toItemResponse(orderItem));
+        }
+
+        return new OrderDetailResponse(
+                order.getId(),
+                order.getOrderSn(),
+                OrderStatus.valueOf(order.getStatus()),
+                order.getTotalAmount(),
+                order.getCreateTime(),
+                itemResponses
+        );
+    }
+
+    /**
+     * 使用本次下单的购物车快照组装新建订单响应。
+     *
+     * <p>购物车快照也是订单明细写入的数据来源。事务成功后可以直接
+     * 使用该快照生成响应，避免重新查询订单和订单明细。</p>
+     *
+     * @param order 已创建成功的订单主记录
+     * @param cartItems 本次下单使用的购物车快照
+     * @return 新创建订单的详情响应
+     */
+    static OrderDetailResponse toCreatedDetailResponse(
+            OmsOrder order,
+            List<OmsCartItem> cartItems
+    ) {
+        List<OrderItemResponse> itemResponses = new ArrayList<>();
+
+        for (OmsCartItem cartItem : cartItems) {
+            BigDecimal itemTotalAmount =
+                    cartItem.getPrice().multiply(
+                            BigDecimal.valueOf(cartItem.getQuantity())
+                    );
+
+            OrderItemResponse itemResponse = new OrderItemResponse(
+                    cartItem.getProductId(),
+                    cartItem.getProductName(),
+                    cartItem.getProductPic(),
+                    cartItem.getProductSkuId(),
+                    cartItem.getProductSkuCode(),
+                    cartItem.getProductSkuAttrs(),
+                    cartItem.getPrice(),
+                    cartItem.getQuantity(),
+                    itemTotalAmount
+            );
+
+            itemResponses.add(itemResponse);
         }
 
         return new OrderDetailResponse(

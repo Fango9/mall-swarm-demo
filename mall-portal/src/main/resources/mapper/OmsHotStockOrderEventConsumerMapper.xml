@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.fango.mall.portal.mapper.OmsHotStockOrderEventConsumerMapper">
+
+    <insert id="insertIgnoreConsumeLog">
+        INSERT IGNORE INTO oms_order_event_consumer
+        (
+            event_id,
+            consumer_name,
+            order_id,
+            order_sn
+        )
+        VALUES
+            (
+                #{eventId,jdbcType=VARCHAR},
+                #{consumerName,jdbcType=VARCHAR},
+                #{orderId,jdbcType=BIGINT},
+                #{orderSn,jdbcType=VARCHAR}
+            )
+    </insert>
+
+    <update id="promotePendingStockOrder">
+        UPDATE oms_order
+        SET status = 'PENDING_PAYMENT'
+        WHERE id = #{orderId,jdbcType=BIGINT}
+          AND order_sn = #{orderSn,jdbcType=VARCHAR}
+          AND status = 'PENDING_STOCK'
+    </update>
+
+</mapper>

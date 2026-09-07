@@ -18,7 +18,7 @@ NACOS_SERVER_URL="${NACOS_SERVER_URL:-http://127.0.0.1:8848/nacos}"
 NACOS_NAMESPACE_ID="${NACOS_NAMESPACE_ID:-public}"
 NACOS_GROUP_NAME="${NACOS_GROUP_NAME:-DEFAULT_GROUP}"
 
-declare -a CONFIGS=(
+declare -a ALL_CONFIGS=(
   "mall-gateway-dev.yml:text"
   "mall-auth-dev.yml:yaml"
   "mall-admin-dev.yml:yaml"
@@ -28,11 +28,23 @@ declare -a CONFIGS=(
   "mall-demo-dev.yml:text"
 )
 
-if [[ "${1:-}" != "--apply" ]]; then
+declare -a CONFIGS=("${ALL_CONFIGS[@]}")
+if [[ "$#" == 2 && "$1" == --apply && "$2" == --only-admin ]]; then
+  CONFIGS=("mall-admin-dev.yml:yaml")
+elif [[ "$#" == 2 && "$1" == --apply && "$2" == --only-gateway ]]; then
+  CONFIGS=("mall-gateway-dev.yml:text")
+elif [[ "$#" == 2 && "$1" == --apply && "$2" == --only-portal ]]; then
+  CONFIGS=("mall-portal-dev.yml:yaml")
+elif [[ "$#" == 1 && "$1" == --apply ]]; then
+  :
+elif [[ "$#" == 0 ]]; then
   echo "Dry run: the following Nacos configurations would be imported:"
-  printf '%s\n' "${CONFIGS[@]%%:*}"
-  echo "No Nacos configuration was changed. Re-run with --apply to import."
+  printf '%s\n' "${ALL_CONFIGS[@]%%:*}"
+  echo "No Nacos configuration was changed. Re-run with --apply [--only-admin|--only-portal] to import."
   exit 0
+else
+  echo '用法: import-nacos-dev.sh [--apply [--only-admin|--only-gateway|--only-portal]]' >&2
+  exit 2
 fi
 
 command -v curl >/dev/null
@@ -44,7 +56,7 @@ if [[ -z "${NACOS_USERNAME:-}" || -z "${NACOS_PASSWORD:-}" ]]; then
 fi
 
 login_response="$(
-  curl --fail-with-body --silent --show-error \
+  curl --fail --silent --show-error --max-time 15 \
     --request POST "${NACOS_SERVER_URL}/v3/auth/user/login" \
     --data-urlencode "username=${NACOS_USERNAME}" \
     --data-urlencode "password=${NACOS_PASSWORD}"
@@ -68,7 +80,7 @@ for config in "${CONFIGS[@]}"; do
   fi
 
   response="$(
-    curl --fail-with-body --silent --show-error \
+    curl --fail --silent --show-error --max-time 15 \
       --request POST "${NACOS_CONSOLE_URL}/v3/console/cs/config" \
       --header "accessToken: ${access_token}" \
       --data-urlencode "dataId=${file_name}" \
@@ -83,5 +95,15 @@ for config in "${CONFIGS[@]}"; do
     exit 1
   fi
 
-  echo "Imported ${file_name}"
+  # 成功响应后再读回内容，防止导错 Data ID/namespace 或只依据本地 YAML 判断。
+  published="$(curl --fail --silent --show-error --max-time 15 --get \
+    "${NACOS_CONSOLE_URL}/v3/console/cs/config" \
+    --header "accessToken: ${access_token}" \
+    --data-urlencode "dataId=${file_name}" \
+    --data-urlencode "groupName=${NACOS_GROUP_NAME}" \
+    --data-urlencode "namespaceId=${NACOS_NAMESPACE_ID}")"
+  remote_content="$(jq -er 'select(.code == 0) | .data.content | select(type == "string")' <<< "$published")"
+  local_content="$(cat "$file_path")"
+  [[ "$remote_content" == "$local_content" ]] || { echo "Nacos readback mismatch: $file_name" >&2; exit 1; }
+  echo "Imported and verified ${file_name} namespace=${NACOS_NAMESPACE_ID} group=${NACOS_GROUP_NAME}"
 done

@@ -87,23 +87,27 @@ public class StockReservationServiceImpl implements StockReservationService {
     public boolean reserveStock(StockReservationRequest request) {
         validateReservationRequest(request);
 
-        List<PmsStockReservation> existingReservations =
-                listReservations(request.reservationNo());
+        // 用订单编号查询预占记录
+        List<PmsStockReservation> existingReservations = listReservations(request.reservationNo());
 
         if (!existingReservations.isEmpty()) {
+            // 校验已存在记录与请求的差异
             validateExistingReservation(existingReservations, request.items());
             return true;
         }
 
+        // 按 skuid 进行排序
         List<StockReservationItem> sortedItems = new ArrayList<>(request.items());
         sortedItems.sort(Comparator.comparing(StockReservationItem::skuId));
 
+        // 使用 spring 的事务同步机制，若 mysql 发生回滚，则同步恢复 redis 库存
         List<StockReservationItem> redisReservedItems = new ArrayList<>();
         AtomicBoolean redisStockRestored = new AtomicBoolean(false);
         registerRollbackRedisCompensation(redisReservedItems, redisStockRestored);
 
         try {
             for (StockReservationItem item : sortedItems) {
+                // 对热点 sku redis 中的 stock 进行预扣减
                 HotSkuStockFilterResult filterResult = hotSkuStockFilterService.tryReserve(item.skuId(), item.quantity());
 
                 if (filterResult == HotSkuStockFilterResult.STOCK_NOT_ENOUGH) {
@@ -113,6 +117,7 @@ public class StockReservationServiceImpl implements StockReservationService {
                     redisReservedItems.add(item);
                 }
 
+                // 更新数据库 sku 的 lock_stock
                 int locked = pmsSkuStockReservationMapper.lockStock(item.skuId(), item.quantity());
                 if (locked != 1) {
                     throw new ApiException(StockReservationErrorCode.STOCK_NOT_ENOUGH);
@@ -125,6 +130,7 @@ public class StockReservationServiceImpl implements StockReservationService {
                 reservation.setStatus(StockReservationStatus.LOCKED.name());
                 reservation.setExpireAt(calculateExpireAt());
 
+                // 插入一条预占记录
                 int inserted = pmsStockReservationMapper.insertSelective(reservation);
                 if (inserted != 1 || reservation.getId() == null) {
                     throw new ApiException(StockReservationErrorCode.RESERVATION_CREATE_FAILED);
@@ -196,12 +202,13 @@ public class StockReservationServiceImpl implements StockReservationService {
     public boolean releaseStock(StockReleaseRequest request) {
         validateReleaseRequest(request);
 
-        List<PmsStockReservation> reservations =
-                listReservations(request.reservationNo());
+        List<PmsStockReservation> reservations = listReservations(request.reservationNo());
         if (reservations.isEmpty()) {
             throw new ApiException(StockReservationErrorCode.RESERVATION_NOT_FOUND);
         }
 
+        // 库存预占释放后，需要释放 redis 预占扣减的库存
+        // 注册事务提交后，恢复 redis 预占库存动作
         List<PmsStockReservation> releasedReservations = new ArrayList<>();
         registerAfterCommitRedisRestore(releasedReservations);
 
@@ -364,10 +371,7 @@ public class StockReservationServiceImpl implements StockReservationService {
      * @param existingReservations 已存在的库存预占记录
      * @param items 当前请求的预占项
      */
-    private void validateExistingReservation(
-            List<PmsStockReservation> existingReservations,
-            List<StockReservationItem> items
-    ) {
+    private void validateExistingReservation(List<PmsStockReservation> existingReservations, List<StockReservationItem> items) {
         Map<Long, Integer> existingQuantities = new HashMap<>();
         for (PmsStockReservation reservation : existingReservations) {
             existingQuantities.put(
@@ -375,18 +379,12 @@ public class StockReservationServiceImpl implements StockReservationService {
                     reservation.getQuantity()
             );
 
-            if (StockReservationStatus.RELEASED.name()
-                    .equals(reservation.getStatus())) {
-                throw new ApiException(
-                        StockReservationErrorCode.RESERVATION_ALREADY_RELEASED
-                );
+            if (StockReservationStatus.RELEASED.name().equals(reservation.getStatus())) {
+                throw new ApiException(StockReservationErrorCode.RESERVATION_ALREADY_RELEASED);
             }
 
-            if (!StockReservationStatus.LOCKED.name()
-                    .equals(reservation.getStatus())) {
-                throw new ApiException(
-                        StockReservationErrorCode.RESERVATION_REQUEST_CONFLICT
-                );
+            if (!StockReservationStatus.LOCKED.name().equals(reservation.getStatus())) {
+                throw new ApiException(StockReservationErrorCode.RESERVATION_STATUS_CONFLICT);
             }
         }
 
@@ -396,9 +394,7 @@ public class StockReservationServiceImpl implements StockReservationService {
         }
 
         if (!existingQuantities.equals(requestQuantities)) {
-            throw new ApiException(
-                    StockReservationErrorCode.RESERVATION_REQUEST_CONFLICT
-            );
+            throw new ApiException(StockReservationErrorCode.RESERVATION_REQUEST_CONFLICT);
         }
     }
 }

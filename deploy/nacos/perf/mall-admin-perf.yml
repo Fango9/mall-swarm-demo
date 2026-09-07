@@ -32,6 +32,12 @@ spring:
       simple:
         acknowledge-mode: auto
         default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 5
+          initial-interval: 1000
+          multiplier: 2.0
+          max-interval: 10000
 
 sa-token:
   token-name: Authorization
@@ -74,7 +80,28 @@ mall:
       - 39
       # PERF14 P5H 千 RPS 探测专用热点 SKU。
       - 40
-    refresh-fixed-delay-ms: 30000
+    # 仅审计 Redis 键健康度，绝不以 MySQL 覆盖 Redis 预占用余额。
+    audit-fixed-delay-millis: 30000
+  # Redis Lua + Stream Relay 热点库存预占用；链路完整验证前保持关闭。
+  hot-stock-reservation:
+    enabled: false
+    expire-millis: 900000
+    state-retention-millis: 86400000
+    relay-consumer-group: mall-hot-stock-relay
+    relay-consumer-name: ${HOSTNAME:mall-admin-relay}
+    relay-exchange: mall.hot-stock.reservation.exchange
+    relay-routing-key: hot-stock.reservation.accepted
+    relay-batch-size: 100
+    persistence-batch-size: 50
+    reconciliation-max-reservations: 1000
+    # 仅人工调用修复接口时使用；Lua 在锁持有期间拒绝新的首次预占用。
+    reconciliation-repair-lock-ttl-millis: 30000
+    relay-confirm-timeout-millis: 5000
+    relay-fixed-delay-millis: 200
+    relay-claim-min-idle-millis: 30000
+    dead-letter-retry-delay-millis: 10000
+    timeout-release-batch-size: 100
+    timeout-release-fixed-delay-millis: 1000
 
 management:
   endpoints:

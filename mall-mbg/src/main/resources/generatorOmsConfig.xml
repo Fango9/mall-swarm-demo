@@ -37,15 +37,15 @@
                 targetProject="src/main/java"/>
 
         <table tableName="oms_cart_item" domainObjectName="OmsCartItem">
-            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+            <generatedKey column="id" sqlStatement="JDBC" identity="true"/>
         </table>
 
         <table tableName="oms_order" domainObjectName="OmsOrder">
-            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+            <generatedKey column="id" sqlStatement="JDBC" identity="true"/>
         </table>
 
         <table tableName="oms_order_item" domainObjectName="OmsOrderItem">
-            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+            <generatedKey column="id" sqlStatement="JDBC" identity="true"/>
         </table>
     </context>
 </generatorConfiguration>

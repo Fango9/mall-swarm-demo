@@ -1,6 +1,8 @@
 package cn.fango.mall.portal.service;
 
 import cn.fango.mall.common.event.OrderCreatedEvent;
+import cn.fango.mall.common.event.HotStockOrderConfirmedEvent;
+import cn.fango.mall.common.event.HotStockOrderFailedEvent;
 import cn.fango.mall.mbg.mapper.OmsCartItemMapper;
 import cn.fango.mall.mbg.mapper.OmsOrderItemMapper;
 import cn.fango.mall.mbg.mapper.OmsOrderMapper;
@@ -61,6 +63,16 @@ class OrderOutboxMySqlIntegrationTest {
 
     private Long orderId;
 
+    private String hotOrderSn;
+
+    @Autowired
+    private HotStockOrderFailedEventConsumerService
+            hotStockOrderFailedEventConsumerService;
+
+    @Autowired
+    private HotStockOrderConfirmedEventConsumerService
+            hotStockOrderConfirmedEventConsumerService;
+
     /**
      * 创建本测试独占的购物车项。
      */
@@ -90,7 +102,20 @@ class OrderOutboxMySqlIntegrationTest {
      */
     @AfterEach
     void cleanUp() {
+        if (hotOrderSn != null) {
+            jdbcTemplate.update(
+                    "DELETE FROM oms_hot_stock_failure_consumer "
+                            + "WHERE order_sn = ?",
+                    hotOrderSn
+            );
+        }
+
         if (orderId != null) {
+            jdbcTemplate.update(
+                    "DELETE FROM oms_order_event_consumer WHERE order_id = ?",
+                    orderId
+            );
+
             jdbcTemplate.update(
                     "DELETE FROM oms_outbox_event WHERE aggregate_id = ?",
                     orderId
@@ -127,7 +152,8 @@ class OrderOutboxMySqlIntegrationTest {
                 900001L,
                 idempotencyKey,
                 orderSn,
-                List.of(cartItem)
+                List.of(cartItem),
+                false
         );
         orderId = order.getId();
 
@@ -168,5 +194,140 @@ class OrderOutboxMySqlIntegrationTest {
                 .isEqualTo(outboxRow.get("event_id"));
         assertThat(event.orderId()).isEqualTo(order.getId());
         assertThat(event.orderSn()).isEqualTo(orderSn);
+    }
+
+    /**
+     * 验证热点库存失败事件只会将等待确认的订单标记一次为库存失败。
+     */
+    @Test
+    void failureEventMarksPendingStockOrderFailedIdempotently() {
+        hotOrderSn = "hot-failed-" + UUID.randomUUID();
+        String idempotencyKey = "hot-failed-" + UUID.randomUUID();
+
+        OmsCartItem cartItem =
+                omsCartItemMapper.selectByPrimaryKey(cartItemId);
+
+        OmsOrder order = orderLocalTransactionService.createOrder(
+                900001L,
+                idempotencyKey,
+                hotOrderSn,
+                List.of(cartItem),
+                true
+        );
+        orderId = order.getId();
+
+        HotStockOrderFailedEvent event = new HotStockOrderFailedEvent(
+                UUID.randomUUID().toString(),
+                hotOrderSn
+        );
+
+        hotStockOrderFailedEventConsumerService.markOrderStockFailed(event);
+        hotStockOrderFailedEventConsumerService.markOrderStockFailed(event);
+
+        String status = jdbcTemplate.queryForObject(
+                "SELECT status FROM oms_order WHERE id = ?",
+                String.class,
+                orderId
+        );
+        Integer consumeLogCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM oms_hot_stock_failure_consumer "
+                        + "WHERE order_sn = ?",
+                Integer.class,
+                hotOrderSn
+        );
+
+        assertThat(status).isEqualTo("STOCK_FAILED");
+        assertThat(consumeLogCount).isEqualTo(1);
+    }
+
+    /**
+     * 验证 Portal 尚未创建订单时收到失败事件，会持久化失败标记而不是无限重试；
+     * 后续本地事务据此直接创建库存失败订单，且不会再发确认 Admin 的 Outbox。
+     */
+    @Test
+    void failureEventBeforeOrderCreationCreatesTerminalFailureOrder() {
+        hotOrderSn = "hot-failed-before-create-" + UUID.randomUUID();
+        String idempotencyKey = "hot-failed-before-create-" + UUID.randomUUID();
+
+        hotStockOrderFailedEventConsumerService.markOrderStockFailed(
+                new HotStockOrderFailedEvent(
+                        UUID.randomUUID().toString(),
+                        hotOrderSn
+                )
+        );
+
+        OmsCartItem cartItem = omsCartItemMapper.selectByPrimaryKey(cartItemId);
+        OmsOrder order = orderLocalTransactionService.createOrder(
+                900001L,
+                idempotencyKey,
+                hotOrderSn,
+                List.of(cartItem),
+                true
+        );
+        orderId = order.getId();
+
+        String status = jdbcTemplate.queryForObject(
+                "SELECT status FROM oms_order WHERE id = ?",
+                String.class,
+                orderId
+        );
+        Integer hotCreatedOutboxCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM oms_outbox_event "
+                        + "WHERE aggregate_id = ? "
+                        + "AND event_type = 'HOT_STOCK_ORDER_CREATED'",
+                Integer.class,
+                orderId
+        );
+
+        assertThat(status).isEqualTo("STOCK_FAILED");
+        assertThat(hotCreatedOutboxCount).isZero();
+    }
+
+    /**
+     * 验证热点库存确认事件只会将等待确认的订单推进一次到待支付。
+     */
+    @Test
+    void confirmationEventPromotesPendingStockOrderIdempotently() {
+        String orderSn = "hot-confirmed-" + UUID.randomUUID();
+        String idempotencyKey = "hot-confirmed-" + UUID.randomUUID();
+
+        OmsCartItem cartItem =
+                omsCartItemMapper.selectByPrimaryKey(cartItemId);
+
+        OmsOrder order = orderLocalTransactionService.createOrder(
+                900001L,
+                idempotencyKey,
+                orderSn,
+                List.of(cartItem),
+                true
+        );
+        orderId = order.getId();
+
+        HotStockOrderConfirmedEvent event =
+                new HotStockOrderConfirmedEvent(
+                        UUID.randomUUID().toString(),
+                        orderId,
+                        orderSn
+                );
+
+        hotStockOrderConfirmedEventConsumerService
+                .promoteOrderToPendingPayment(event);
+        hotStockOrderConfirmedEventConsumerService
+                .promoteOrderToPendingPayment(event);
+
+        String status = jdbcTemplate.queryForObject(
+                "SELECT status FROM oms_order WHERE id = ?",
+                String.class,
+                orderId
+        );
+        Integer consumeLogCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM oms_order_event_consumer "
+                        + "WHERE order_id = ?",
+                Integer.class,
+                orderId
+        );
+
+        assertThat(status).isEqualTo("PENDING_PAYMENT");
+        assertThat(consumeLogCount).isEqualTo(1);
     }
 }
